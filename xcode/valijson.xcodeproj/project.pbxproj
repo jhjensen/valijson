@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6A3469911BD10C7000C97DA2 /* test_graph_parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6A3469901BD10C7000C97DA2 /* test_graph_parser.cpp */; };
 		6A477F8517D6BCBB0013571C /* libboost_regex-mt.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A477F8417D6BCBB0013571C /* libboost_regex-mt.dylib */; };
 		6A477F8617D6EA000013571C /* libboost_regex-mt.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A477F8417D6BCBB0013571C /* libboost_regex-mt.dylib */; };
 		6A506D201AF88E5D00C2C818 /* test_json_pointer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6A506D1F1AF88E5D00C2C818 /* test_json_pointer.cpp */; };
@@ -41,6 +42,9 @@
 /* Begin PBXFileReference section */
 		6A309D2D1C28C1FD00EF761C /* subschema.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = subschema.hpp; sourceTree = "<group>"; };
 		6A34698C1BD109A900C97DA2 /* json_reference.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = json_reference.hpp; path = internal/json_reference.hpp; sourceTree = "<group>"; };
+		6A34698E1BD10BFA00C97DA2 /* graph.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graph.hpp; sourceTree = "<group>"; };
+		6A34698F1BD10BFA00C97DA2 /* graph_parser.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graph_parser.hpp; sourceTree = "<group>"; };
+		6A3469901BD10C7000C97DA2 /* test_graph_parser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = test_graph_parser.cpp; sourceTree = "<group>"; };
 		6A477F8417D6BCBB0013571C /* libboost_regex-mt.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libboost_regex-mt.dylib"; path = "/usr/local/lib/libboost_regex-mt.dylib"; sourceTree = "<absolute>"; };
 		6A506D121AF884E100C2C818 /* draft-03.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "draft-03.json"; sourceTree = "<group>"; };
 		6A506D131AF884E100C2C818 /* draft-04.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "draft-04.json"; sourceTree = "<group>"; };
@@ -284,6 +288,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		6A34698D1BD10BFA00C97DA2 /* graph */ = {
+			isa = PBXGroup;
+			children = (
+				6A34698E1BD10BFA00C97DA2 /* graph.hpp */,
+				6A34698F1BD10BFA00C97DA2 /* graph_parser.hpp */,
+			);
+			path = graph;
+			sourceTree = "<group>";
+		};
 		6A477F8717D6EEF20013571C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -694,6 +707,7 @@
 				6AB8FEB417E6E53D0028E147 /* data */,
 				6AB8FEB117E6DF9A0028E147 /* test_adapter_comparison.cpp */,
 				6AA8A5DA17F8BDCA002728A0 /* test_fetch_document_callback.cpp */,
+				6A3469901BD10C7000C97DA2 /* test_graph_parser.cpp */,
 				6A506D1F1AF88E5D00C2C818 /* test_json_pointer.cpp */,
 				6AB8FE9217E6BE770028E147 /* test_jsoncpp_adapter.cpp */,
 				6AB8FEC417E92B100028E147 /* test_property_tree_adapter.cpp */,
@@ -755,6 +769,7 @@
 			children = (
 				6AC78BDE17C5FC6A00674114 /* adapters */,
 				6AC78BE317C5FC6A00674114 /* constraints */,
+				6A34698D1BD10BFA00C97DA2 /* graph */,
 				6A506D1D1AF88D5E00C2C818 /* internal */,
 				6A869A2F17CD8A81006864FA /* utils */,
 				6AC78BE917C5FC6A00674114 /* schema.hpp */,
@@ -1001,6 +1016,7 @@
 				6A506D201AF88E5D00C2C818 /* test_json_pointer.cpp in Sources */,
 				6A725F4917F6404100D6B2FF /* test_rapidjson_adapter.cpp in Sources */,
 				6A725F4A17F6404100D6B2FF /* test_validator.cpp in Sources */,
+				6A3469911BD10C7000C97DA2 /* test_graph_parser.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
