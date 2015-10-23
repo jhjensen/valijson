@@ -19,7 +19,7 @@ public:
     template<typename AdapterType>
     void parse(const AdapterType &root, Graph &graph)
     {
-
+        throw std::runtime_error("Not implemented");
     }
 
 private:
