@@ -27,19 +27,28 @@ public:
 
     };
 
-    bool containsArray() const
+    GraphNode(const Array &value)
+      : value(value)
     {
-        return contains<Array>();
+
     }
 
-    bool containsObject() const
+    GraphNode(const Object &value)
+      : value(value)
     {
-        return contains<Object>();
+
     }
 
-    bool containsString() const
+    GraphNode(const Reference &value)
+      : value(value)
     {
-        return contains<String>();
+
+    }
+
+    GraphNode(const String &value)
+      : value(value)
+    {
+
     }
 
     bool isEmpty() const
@@ -47,9 +56,63 @@ public:
         return !value;
     }
 
+    bool isReference() const
+    {
+        if (!value) {
+            return false;
+        }
+
+        return boost::get<Reference>(&(*value));
+    }
+
     void reset()
     {
         value = boost::none;
+    }
+
+    bool resolvesToArray() const
+    {
+        return resolvesTo<Array>();
+    }
+
+    bool resolvesToObject() const
+    {
+        return resolvesTo<Object>();
+    }
+
+    bool resolvesToString() const
+    {
+        return resolvesTo<String>();
+    }
+
+    boost::optional<Array> resolveToArray() const
+    {
+        return resolveTo<Array>();
+    }
+
+    bool resolveToArray(Array &value) const
+    {
+        return resolveTo(value);
+    }
+
+    boost::optional<Object> resolveToObject() const
+    {
+        return resolveTo<Object>();
+    }
+
+    bool resolveToObject(Object &value) const
+    {
+        return resolveTo(value);
+    }
+
+    boost::optional<String> resolveToString() const
+    {
+        return resolveTo<String>();
+    }
+
+    bool resolveToString(String &value) const
+    {
+        return resolveTo(value);
     }
 
     void setArray(const Array &value)
@@ -62,16 +125,69 @@ public:
         this->value = value;
     }
 
+    void setReference(const Reference &reference)
+    {
+        this->value = value;
+    }
+
     void setString(const String &value)
     {
         this->value = value;
+    }
+
+    bool sizeOfResolvedArray(size_t &result) const
+    {
+        if (!value) {
+            return false;
+        }
+
+        const Array *a = boost::get<Array>(&(*value));
+        if (a) {
+            return a->size();
+        }
+
+        const Reference *r = boost::get<Reference>(&(*value));
+        if (r) {
+            boost::shared_ptr<const GraphNode> rs = r->lock();
+            if (rs) {
+                return rs->sizeOfResolvedArray(result);
+            } else {
+                throw std::runtime_error("Referenced node no longer exists");
+            }
+        }
+
+        return false;
+    }
+
+    bool sizeOfResolvedObject(size_t &result) const
+    {
+        if (!value) {
+            return false;
+        }
+
+        const Object *o = boost::get<Object>(&(*value));
+        if (o) {
+            return o->size();
+        }
+
+        const Reference *r = boost::get<Reference>(&(*value));
+        if (r) {
+            boost::shared_ptr<const GraphNode> rs = r->lock();
+            if (rs) {
+                return rs->sizeOfResolvedObject(result);
+            } else {
+                throw std::runtime_error("Referenced node no longer exists");
+            }
+        }
+
+        return false;
     }
 
 private:
     typedef boost::variant<Array, Object, Reference, String> GraphValue;
 
     template<typename ValueType>
-    bool contains() const
+    bool resolvesTo() const
     {
         if (!value) {
             return false;
@@ -82,13 +198,62 @@ private:
         if (r) {
             boost::shared_ptr<const GraphNode> rs = r->lock();
             if (rs) {
-                return rs->contains<ValueType>();
+                return rs->resolvesTo<ValueType>();
             } else {
                 throw std::runtime_error("Referenced node no longer exists.");
             }
         }
 
         return boost::get<ValueType>(&(*value));
+    }
+
+    template<typename ValueType>
+    boost::optional<ValueType> resolveTo() const
+    {
+        if (value) {
+            const ValueType *v = boost::get<ValueType>(&(*value));
+            if (v) {
+                return *v;
+            }
+
+            const Reference *r = boost::get<Reference>(&(*value));
+            if (r) {
+                boost::shared_ptr<const GraphNode> rs = r->lock();
+                if (rs) {
+                    return rs->resolveTo<ValueType>();
+                } else {
+                    throw std::runtime_error(
+                            "Referenced node no longer exists");
+                }
+            }
+        }
+
+        return boost::none;
+    }
+
+    template<typename ValueType>
+    bool resolveTo(ValueType &valueType) const
+    {
+        if (value) {
+            const ValueType *v = boost::get<ValueType>(&(*value));
+            if (v) {
+                valueType = *v;
+                return true;
+            }
+
+            const Reference *r = boost::get<Reference>(&(*value));
+            if (r) {
+                boost::shared_ptr<const GraphNode> rs = r->lock();
+                if (rs) {
+                    return rs->resolveTo(valueType);
+                } else {
+                    throw std::runtime_error(
+                            "Referenced node no longer exists");
+                }
+            }
+        }
+
+        return false;
     }
 
     boost::optional<GraphValue> value;
