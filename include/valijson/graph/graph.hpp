@@ -33,6 +33,24 @@ public:
 
     }
 
+    GraphNode(bool value)
+      : value(value)
+    {
+
+    }
+
+    GraphNode(double value)
+      : value(value)
+    {
+
+    }
+
+    GraphNode(int64_t value)
+      : value(value)
+    {
+
+    }
+
     GraphNode(const Object &value)
       : value(value)
     {
@@ -75,6 +93,16 @@ public:
         return resolvesTo<Array>();
     }
 
+    bool resolvesToBool() const
+    {
+        return resolvesTo<bool>();
+    }
+
+    bool resolvesToInteger() const
+    {
+        return resolvesTo<int64_t>();
+    }
+
     bool resolvesToObject() const
     {
         return resolvesTo<Object>();
@@ -91,6 +119,36 @@ public:
     }
 
     bool resolveToArray(Array &value) const
+    {
+        return resolveTo(value);
+    }
+
+    boost::optional<bool> resolveToBool() const
+    {
+        return resolveTo<bool>();
+    }
+
+    bool resolveToBool(bool &value) const
+    {
+        return resolveTo(value);
+    }
+
+    boost::optional<double> resolveToDouble() const
+    {
+        return resolveTo<double>();
+    }
+
+    bool resolveToDouble(double &value) const
+    {
+        return resolveTo(value);
+    }
+
+    boost::optional<int64_t> resolveToInteger() const
+    {
+        return resolveTo<int64_t>();
+    }
+
+    bool resolveToInteger(int64_t &value) const
     {
         return resolveTo(value);
     }
@@ -116,6 +174,21 @@ public:
     }
 
     void setArray(const Array &value)
+    {
+        this->value = value;
+    }
+
+    void setBool(bool value)
+    {
+        this->value = value;
+    }
+
+    void setDouble(double value)
+    {
+        this->value = value;
+    }
+
+    void setInteger(int64_t value)
     {
         this->value = value;
     }
@@ -184,7 +257,8 @@ public:
     }
 
 private:
-    typedef boost::variant<Array, Object, Reference, String> GraphValue;
+    typedef boost::variant<
+            Array, bool, double, int64_t, Object, Reference, String> GraphValue;
 
     template<typename ValueType>
     bool resolvesTo() const
