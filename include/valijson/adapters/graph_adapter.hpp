@@ -136,17 +136,17 @@ public:
 
     bool getBool(bool &result) const
     {
-        return false;
+        return value->resolveToBool(result);
     }
 
     bool getDouble(double &result) const
     {
-        return false;
+        return value->resolveToDouble(result);
     }
 
     bool getInteger(int64_t &result) const
     {
-        return false;
+        return value->resolveToInteger(result);
     }
 
     boost::optional<JsonGraphObject> getObjectOptional() const
@@ -182,17 +182,17 @@ public:
 
     bool isBool() const
     {
-        return false;
+        return value->resolvesToBool();
     }
 
     bool isDouble() const
     {
-        return false;
+        return value->resolvesToDouble();
     }
 
     bool isInteger() const
     {
-        return false;
+        return value->resolvesToInteger();
     }
 
     bool isNull() const
@@ -202,7 +202,7 @@ public:
 
     bool isNumber() const
     {
-        return false;
+        return value->resolvesToDouble() || value->resolvesToInteger();
     }
 
     bool isObject() const

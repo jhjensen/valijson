@@ -27,43 +27,43 @@ public:
 
     };
 
-    GraphNode(const Array &value)
+    explicit GraphNode(const Array &value)
       : value(value)
     {
 
     }
 
-    GraphNode(bool value)
+    explicit GraphNode(bool value)
       : value(value)
     {
 
     }
 
-    GraphNode(double value)
+    explicit GraphNode(double value)
       : value(value)
     {
 
     }
 
-    GraphNode(int64_t value)
+    explicit GraphNode(int64_t value)
       : value(value)
     {
 
     }
 
-    GraphNode(const Object &value)
+    explicit GraphNode(const Object &value)
       : value(value)
     {
 
     }
 
-    GraphNode(const Reference &value)
+    explicit GraphNode(const Reference &value)
       : value(value)
     {
 
     }
 
-    GraphNode(const String &value)
+    explicit GraphNode(const String &value)
       : value(value)
     {
 
@@ -96,6 +96,11 @@ public:
     bool resolvesToBool() const
     {
         return resolvesTo<bool>();
+    }
+
+    bool resolvesToDouble() const
+    {
+        return resolvesTo<double>();
     }
 
     bool resolvesToInteger() const
