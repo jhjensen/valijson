@@ -7,9 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <valijson/adapters/graph_adapter.hpp>
 #include <valijson/adapters/jsoncpp_adapter.hpp>
 #include <valijson/adapters/rapidjson_adapter.hpp>
 #include <valijson/adapters/picojson_adapter.hpp>
+#include <valijson/utils/graph_utils.hpp>
 #include <valijson/utils/jsoncpp_utils.hpp>
 #include <valijson/utils/rapidjson_utils.hpp>
 #include <valijson/utils/picojson_utils.hpp>
@@ -114,6 +116,7 @@ protected:
                          const SchemaParser::Version version)
     {
         processTestFile<valijson::adapters::JsonCppAdapter>(testFile, version);
+        processTestFile<valijson::adapters::JsonGraphAdapter>(testFile, version);
         processTestFile<valijson::adapters::RapidJsonAdapter>(testFile, version);
         processTestFile<valijson::adapters::PicoJsonAdapter>(testFile, version);
     }

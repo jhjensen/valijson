@@ -27,5 +27,5 @@ TEST_F(TestGraphParser, GraphParserTestPlaceholder)
     Graph graph;
     GraphParser graphParser;
 
-    EXPECT_THROW(graphParser.parse(adapter, graph), std::exception);
+    EXPECT_NO_THROW(graphParser.parse(adapter, graph));
 }

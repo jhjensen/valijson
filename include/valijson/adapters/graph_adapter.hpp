@@ -239,6 +239,9 @@ public:
     JsonGraphAdapter()
       : BasicAdapter() { }
 
+    JsonGraphAdapter(graph::Graph &graph)
+      : BasicAdapter(boost::shared_ptr<const graph::GraphNode>(graph.getRootNode())) { }
+
     JsonGraphAdapter(boost::shared_ptr<const graph::GraphNode> node)
       : BasicAdapter(node) { }
 };
@@ -392,7 +395,7 @@ private:
 template<>
 struct AdapterTraits<valijson::adapters::JsonGraphAdapter>
 {
-    typedef graph::GraphNode DocumentType;
+    typedef graph::Graph DocumentType;
 
     static std::string adapterName()
     {

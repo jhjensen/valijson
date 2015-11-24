@@ -42,6 +42,7 @@
 
 /* Begin PBXFileReference section */
 		6A309D2D1C28C1FD00EF761C /* subschema.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = subschema.hpp; sourceTree = "<group>"; };
+		6A0FB17D1C03CD83005BADEF /* graph_utils.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graph_utils.hpp; sourceTree = "<group>"; };
 		6A34698C1BD109A900C97DA2 /* json_reference.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = json_reference.hpp; path = internal/json_reference.hpp; sourceTree = "<group>"; };
 		6A34698E1BD10BFA00C97DA2 /* graph.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graph.hpp; sourceTree = "<group>"; };
 		6A34698F1BD10BFA00C97DA2 /* graph_parser.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graph_parser.hpp; sourceTree = "<group>"; };
@@ -572,6 +573,7 @@
 			isa = PBXGroup;
 			children = (
 				6AB8FEBB17E6EF910028E147 /* file_utils.hpp */,
+				6A0FB17D1C03CD83005BADEF /* graph_utils.hpp */,
 				6AB8FEBC17E6EF9A0028E147 /* jsoncpp_utils.hpp */,
 				6AB8FEBD17E77C360028E147 /* property_tree_utils.hpp */,
 				6A869A3017CD8A92006864FA /* rapidjson_utils.hpp */,

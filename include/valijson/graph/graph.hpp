@@ -352,6 +352,11 @@ public:
         return root;
     }
 
+    void setRootNode(boost::shared_ptr<GraphNode> rootNode)
+    {
+        root = rootNode;
+    }
+
 private:
     boost::shared_ptr<GraphNode> root;
 };

@@ -4,6 +4,7 @@
 #include <boost/weak_ptr.hpp>
 
 #include <map>
+#include <stack>
 #include <stdexcept>
 #include <string>
 
@@ -15,16 +16,20 @@ namespace graph {
 
 class GraphParser
 {
+private:
+    typedef std::map<std::string, boost::weak_ptr<GraphNode> > ResolvedNodes;
+
 public:
     template<typename AdapterType>
     void parse(const AdapterType &root, Graph &graph)
     {
-        throw std::runtime_error("Not implemented");
+        ResolvedNodes resolvedNodes;
+        boost::shared_ptr<GraphNode> graphNode =
+                parseNode<AdapterType>(root, root, "", resolvedNodes);
+        graph.setRootNode(graphNode);
     }
 
 private:
-    typedef std::map<std::string, boost::weak_ptr<GraphNode> > ResolvedNodes;
-
     /**
      * @brief  Parse a JSON node and resolve JSON References when present
      *
@@ -102,20 +107,25 @@ private:
         // resolved nodes
         UntypedReferences untypedReferences;
 
-        const AdapterType *currentRoot = &rootNode;
-        const AdapterType *currentNode = &startNode;
+        std::stack<AdapterType> currentRoot;
+        currentRoot.push(rootNode);
+
+        std::stack<AdapterType> currentNode;
+        currentNode.push(startNode);
 
         std::string currentPath = path;
 
-        while (const boost::optional<std::string> jsonReference =
-            parseJsonReference(*currentNode)) {
+        boost::optional<std::string> jsonReference =
+            parseJsonReference(currentNode.top());
+
+        while (jsonReference) {
 
             // Update effective path using JSON Pointer
             currentPath = internal::json_reference::getJsonReferencePointer(
                 *jsonReference);
 
             // TODO: Determine root based on JSON Reference URI
-            currentRoot = &rootNode;
+            currentRoot.push(rootNode);
 
             // Check for previously resolved nodes with the same path
             itr = resolvedNodes.find(currentPath);
@@ -136,8 +146,8 @@ private:
             untypedReferences.insert(currentPath);
 
             // Find the referenced document node and repeat
-            currentNode = internal::json_pointer::resolveJsonPointer(
-                *currentNode, currentPath);
+            currentNode.push(internal::json_pointer::resolveJsonPointer(
+                currentNode.top(), currentPath));
         }
 
         // Create a placeholder graph node and insert it into the set of
@@ -147,8 +157,8 @@ private:
         resolvedNodes.insert(
             ResolvedNodes::value_type(currentPath, newGraphNode));
 
-        parseNodeInto(*newGraphNode, *currentRoot, *currentNode, currentPath,
-            resolvedNodes);
+        parseNodeInto(*newGraphNode, currentRoot.top(), currentNode.top(),
+            currentPath, resolvedNodes);
 
         // Assign the new node to the chain of references seen while resolving
         // and parsing the current graph node
@@ -170,26 +180,43 @@ private:
         typedef typename AdapterType::ObjectMember ObjectMember;
 
         if (currentNode.isObject()) {
+            GraphNode::Object obj;
             BOOST_FOREACH( const ObjectMember m, currentNode.getObject() ) {
                 const std::string &propertyName = m.first;
                 const std::string newPath = path + "/" + propertyName;
-
-                boost::weak_ptr<GraphNode> newNode = parseNode(rootNode,
+                boost::shared_ptr<GraphNode> newNode = parseNode(rootNode,
                     m.second, newPath, resolvedNodes);
+                obj[propertyName] = newNode;
             }
 
+            graphNode.setObject(obj);
+
         } else if (currentNode.isArray()) {
+            GraphNode::Array arr;
             unsigned int currentIndex = 0;
             BOOST_FOREACH( const AdapterType a, currentNode.getArray()) {
                 const std::string newPath = path + "/" +
                     boost::lexical_cast<std::string>(currentIndex);
 
-                boost::weak_ptr<GraphNode> newNode = parseNode(rootNode,
+                boost::shared_ptr<GraphNode> newNode = parseNode(rootNode,
                     a, newPath, resolvedNodes);
-
+                arr.push_back(newNode);
                 currentIndex++;
             }
 
+            graphNode.setArray(arr);
+
+        } else if (currentNode.isString()) {
+            graphNode.setString(currentNode.getString());
+
+        } else if (currentNode.isBool()) {
+            graphNode.setBool(currentNode.getBool());
+
+        } else if (currentNode.isInteger()) {
+            graphNode.setInteger(currentNode.getInteger());
+
+        } else if (currentNode.isDouble()) {
+            graphNode.setDouble(currentNode.getDouble());
         }
     }
 
@@ -205,7 +232,7 @@ private:
         const AdapterType &node)
     {
         if (node.maybeObject()) {
-            const typename AdapterType::Object object = node->asObject();
+            const typename AdapterType::Object object = node.asObject();
             const typename AdapterType::Object::const_iterator itr =
                 object.find("$ref");
             if (itr != object.end()) {
