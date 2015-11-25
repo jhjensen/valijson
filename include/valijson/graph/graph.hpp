@@ -27,6 +27,12 @@ public:
 
     };
 
+    explicit GraphNode(const GraphNode &other)
+    {
+        GraphNodesCopied graphNodesCopied;
+        other.deepCopy(*this, graphNodesCopied);
+    }
+
     explicit GraphNode(const Array &value)
       : value(value)
     {
@@ -264,6 +270,51 @@ public:
 private:
     typedef boost::variant<
             Array, bool, double, int64_t, Object, Reference, String> GraphValue;
+
+    typedef std::map<boost::shared_ptr<const GraphNode>,
+                     boost::shared_ptr<GraphNode> > GraphNodesCopied;
+
+    static boost::shared_ptr<GraphNode> deepCopyPtr(
+            boost::shared_ptr<const GraphNode> graphNode,
+            GraphNodesCopied &graphNodesCopied)
+    {
+        GraphNodesCopied::const_iterator itr = graphNodesCopied.find(graphNode);
+        if (itr != graphNodesCopied.end()) {
+            return itr->second;
+        }
+
+        boost::shared_ptr<GraphNode> newGraphNode = boost::make_shared<GraphNode>();
+        graphNodesCopied.insert(GraphNodesCopied::value_type(graphNode, newGraphNode));
+        graphNode->deepCopy(*newGraphNode, graphNodesCopied);
+        return newGraphNode;
+    }
+
+    void deepCopy(GraphNode &target, GraphNodesCopied &graphNodesCopied) const
+    {
+        if (!value) {
+            return;
+            
+        } else if (const Array *a = boost::get<Array>(&(*value))) {
+            Array newArray;
+            BOOST_FOREACH( boost::shared_ptr<const GraphNode> graphNode, *a ) {
+                newArray.push_back(deepCopyPtr(graphNode, graphNodesCopied));
+            }
+            target.setArray(newArray);
+
+        } else if (const Object *o = boost::get<Object>(&(*value))) {
+            Object newObject;
+            BOOST_FOREACH( const Object::value_type i, *o ) {
+                newObject.insert(Object::value_type(i.first,
+                        deepCopyPtr(i.second, graphNodesCopied)));
+            }
+            target.setObject(newObject);
+
+        } else if (const Reference *r = boost::get<Reference>(&(*value))) {
+            boost::shared_ptr<GraphNode> sr = r->lock();
+            boost::shared_ptr<GraphNode> newGraphNode = deepCopyPtr(sr, graphNodesCopied);
+            target.setReference(newGraphNode);
+        }
+    }
 
     template<typename ValueType>
     bool resolvesTo() const

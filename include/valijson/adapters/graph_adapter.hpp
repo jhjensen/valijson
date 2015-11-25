@@ -92,16 +92,21 @@ class JsonGraphFrozenValue: public FrozenValue
 {
 public:
     JsonGraphFrozenValue(const graph::GraphNode &source)
+      : value(source)
     {
-        throw std::runtime_error("Not implemented");
+
     }
 
     virtual FrozenValue * clone() const
     {
-        throw std::runtime_error("Not implemented");
+        return new JsonGraphFrozenValue(value);
     }
 
     virtual bool equalTo(const Adapter &other, bool strict) const;
+
+private:
+
+    const graph::GraphNode value;
 };
 
 class JsonGraphValue
