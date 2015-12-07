@@ -227,14 +227,16 @@ public:
 
         const Array *a = boost::get<Array>(&(*value));
         if (a) {
-            return a->size();
+            result = a->size();
+            return true;
         }
 
         const Reference *r = boost::get<Reference>(&(*value));
         if (r) {
             boost::shared_ptr<const GraphNode> rs = r->lock();
             if (rs) {
-                return rs->sizeOfResolvedArray(result);
+                result = rs->sizeOfResolvedArray(result);
+                return true;
             } else {
                 throw std::runtime_error("Referenced node no longer exists");
             }
@@ -251,14 +253,16 @@ public:
 
         const Object *o = boost::get<Object>(&(*value));
         if (o) {
-            return o->size();
+            result = o->size();
+            return true;
         }
 
         const Reference *r = boost::get<Reference>(&(*value));
         if (r) {
             boost::shared_ptr<const GraphNode> rs = r->lock();
             if (rs) {
-                return rs->sizeOfResolvedObject(result);
+                result = rs->sizeOfResolvedObject(result);
+                return true;
             } else {
                 throw std::runtime_error("Referenced node no longer exists");
             }
@@ -313,6 +317,22 @@ private:
             boost::shared_ptr<GraphNode> sr = r->lock();
             boost::shared_ptr<GraphNode> newGraphNode = deepCopyPtr(sr, graphNodesCopied);
             target.setReference(newGraphNode);
+
+        } else if (const int64_t *i = boost::get<int64_t>(&(*value))) {
+            target.setInteger(*i);
+
+        } else if (const double *d = boost::get<double>(&(*value))) {
+            target.setDouble(*d);
+
+        } else if (const String *s = boost::get<String>(&(*value))) {
+            target.setString(*s);
+
+        } else if (const bool *b = boost::get<bool>(&(*value))) {
+            target.setBool(*b);
+
+        } else {
+            throw std::runtime_error(
+                "Could not identify JSON value type in source graph");
         }
     }
 
