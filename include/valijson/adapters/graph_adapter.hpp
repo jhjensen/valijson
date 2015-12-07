@@ -92,21 +92,21 @@ class JsonGraphFrozenValue: public FrozenValue
 {
 public:
     JsonGraphFrozenValue(const graph::GraphNode &source)
-      : value(source)
+      : value(boost::make_shared<graph::GraphNode>(source))
     {
 
     }
 
     virtual FrozenValue * clone() const
     {
-        return new JsonGraphFrozenValue(value);
+        return new JsonGraphFrozenValue(*value);
     }
 
     virtual bool equalTo(const Adapter &other, bool strict) const;
 
 private:
 
-    const graph::GraphNode value;
+    boost::shared_ptr<graph::GraphNode> value;
 };
 
 class JsonGraphValue
@@ -410,7 +410,7 @@ struct AdapterTraits<valijson::adapters::JsonGraphAdapter>
 
 inline bool JsonGraphFrozenValue::equalTo(const Adapter &other, bool strict) const
 {
-    throw std::runtime_error("Not implemented");
+    return JsonGraphAdapter(value).equalTo(other, strict);
 }
 
 inline JsonGraphArrayValueIterator JsonGraphArray::begin() const
