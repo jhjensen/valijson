@@ -95,37 +95,42 @@ void addPropertiesConstraint(Schema &schema)
     {
         // Create a child schema for the 'category' property that requires one
         // of several possible values.
-        Schema &propertySchema = propertySchemaMap["category"];
         EnumConstraint::Values enumConstraintValues;
         enumConstraintValues.push_back(new RapidJsonFrozenValue("album"));
         enumConstraintValues.push_back(new RapidJsonFrozenValue("book"));
         enumConstraintValues.push_back(new RapidJsonFrozenValue("other"));
         enumConstraintValues.push_back(new RapidJsonFrozenValue("video"));
-        propertySchema.addConstraint(new EnumConstraint(enumConstraintValues));
+
+        boost::shared_ptr<Schema> childSchema = boost::make_shared<Schema>();
+        childSchema->addConstraint(new EnumConstraint(enumConstraintValues));
+        propertySchemaMap["category"] = childSchema;
     }
 
     {
         // Create a child schema for the 'description' property that requires
         // a string, but does not enforce any length constraints.
-        Schema &propertySchema = propertySchemaMap["description"];
-        propertySchema.addConstraint(new TypeConstraint(TypeConstraint::kString));
+        boost::shared_ptr<Schema> childSchema = boost::make_shared<Schema>();
+        childSchema->addConstraint(new TypeConstraint(TypeConstraint::kString));
+        propertySchemaMap["description"] = childSchema;
     }
 
     {
         // Create a child schema for the 'price' property, that requires a
         // number with a value greater than zero.
-        Schema &propertySchema = propertySchemaMap["price"];
-        propertySchema.addConstraint(new MinimumConstraint(0.0, true));
-        propertySchema.addConstraint(new TypeConstraint(TypeConstraint::kNumber));
+        boost::shared_ptr<Schema> childSchema = boost::make_shared<Schema>();
+        childSchema->addConstraint(new MinimumConstraint(0.0, true));
+        childSchema->addConstraint(new TypeConstraint(TypeConstraint::kNumber));
+        propertySchemaMap["price"] = childSchema;
     }
 
     {
         // Create a child schema for the 'title' property that requires a string
         // that is between 1 and 200 characters in length.
-        Schema &propertySchema = propertySchemaMap["title"];
-        propertySchema.addConstraint(new MaxLengthConstraint(200));
-        propertySchema.addConstraint(new MinLengthConstraint(1));
-        propertySchema.addConstraint(new TypeConstraint(TypeConstraint::kString));
+        boost::shared_ptr<Schema> childSchema = boost::make_shared<Schema>();
+        childSchema->addConstraint(new MaxLengthConstraint(200));
+        childSchema->addConstraint(new MinLengthConstraint(1));
+        childSchema->addConstraint(new TypeConstraint(TypeConstraint::kString));
+        propertySchemaMap["title"] = childSchema;
     }
 
     // Add a PropertiesConstraint to the schema, with the properties defined

@@ -15,12 +15,11 @@
 #define __VALIJSON_CONSTRAINTS_CONCRETE_CONSTRAINTS_HPP
 
 #include <limits>
+#include <map>
 #include <set>
 #include <string>
+#include <vector>
 
-#include <boost/ptr_container/ptr_map.hpp>
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/scoped_ptr.hpp>
 #include <boost/shared_ptr.hpp>
 
 #include <valijson/adapters/frozen_value.hpp>
@@ -42,7 +41,7 @@ namespace constraints {
  */
 struct AllOfConstraint: BasicConstraint<AllOfConstraint>
 {
-    typedef boost::ptr_vector<Schema> Schemas;
+    typedef std::vector<boost::shared_ptr<Schema> > Schemas;
 
     AllOfConstraint(const Schemas &schemas)
       : schemas(schemas) { }
@@ -60,7 +59,7 @@ struct AllOfConstraint: BasicConstraint<AllOfConstraint>
  */
 struct AnyOfConstraint: BasicConstraint<AnyOfConstraint>
 {
-    typedef boost::ptr_vector<Schema> Schemas;
+    typedef std::vector<boost::shared_ptr<Schema> > Schemas;
 
     AnyOfConstraint(const Schemas &schemas)
       : schemas(schemas) { }
@@ -82,7 +81,8 @@ struct DependenciesConstraint: BasicConstraint<DependenciesConstraint>
     typedef std::map<std::string, Dependencies> PropertyDependenciesMap;
 
     // A mapping from property names to dependent schemas
-    typedef boost::ptr_map<std::string, Schema> PropertyDependentSchemasMap;
+    typedef std::map<std::string, boost::shared_ptr<Schema> >
+        PropertyDependentSchemasMap;
 
     DependenciesConstraint(const PropertyDependenciesMap &dependencies,
                            const PropertyDependentSchemasMap &dependentSchemas)
@@ -115,7 +115,7 @@ struct EnumConstraint: BasicConstraint<EnumConstraint>
  */
 struct ItemsConstraint: BasicConstraint<ItemsConstraint>
 {
-    typedef boost::ptr_vector<Schema> Schemas;
+    typedef std::vector<boost::shared_ptr<Schema> > Schemas;
 
     /**
      * @brief  Construct a singular item constraint that allows no additional
@@ -165,9 +165,9 @@ struct ItemsConstraint: BasicConstraint<ItemsConstraint>
         itemSchemas(other.itemSchemas ? new Schemas(*other.itemSchemas.get()) : NULL),
         additionalItemsSchema(other.additionalItemsSchema ? new Schema(*other.additionalItemsSchema.get()) : NULL) { }
 
-    const boost::scoped_ptr<const Schema> itemSchema;
-    const boost::scoped_ptr<const Schemas> itemSchemas;
-    const boost::scoped_ptr<const Schema> additionalItemsSchema;
+    const boost::shared_ptr<const Schema> itemSchema;
+    const boost::shared_ptr<const Schemas> itemSchemas;
+    const boost::shared_ptr<const Schema> additionalItemsSchema;
 };
 
 /**
@@ -295,7 +295,7 @@ struct NotConstraint: BasicConstraint<NotConstraint>
     NotConstraint(const NotConstraint &other)
       : schema(other.schema ? new Schema(*other.schema) : NULL) { }
 
-    const boost::scoped_ptr<const Schema> schema;
+    const boost::shared_ptr<const Schema> schema;
 };
 
 /**
@@ -303,7 +303,7 @@ struct NotConstraint: BasicConstraint<NotConstraint>
  */
 struct OneOfConstraint: BasicConstraint<OneOfConstraint>
 {
-    typedef boost::ptr_vector<Schema> Schemas;
+    typedef std::vector<boost::shared_ptr<Schema> > Schemas;
 
     OneOfConstraint(const Schemas &schemas)
       : schemas(schemas) { }
@@ -329,7 +329,8 @@ struct PatternConstraint: BasicConstraint<PatternConstraint>
  */
 struct PropertiesConstraint: BasicConstraint<PropertiesConstraint> {
 
-    typedef boost::ptr_map<std::string, Schema> PropertySchemaMap;
+    typedef std::map<std::string, boost::shared_ptr<Schema> >
+        PropertySchemaMap;
 
     PropertiesConstraint(const PropertySchemaMap &properties,
                          const PropertySchemaMap &patternProperties)
@@ -351,7 +352,7 @@ struct PropertiesConstraint: BasicConstraint<PropertiesConstraint> {
 
     const PropertySchemaMap properties;
     const PropertySchemaMap patternProperties;
-    const boost::scoped_ptr<const Schema> additionalProperties;
+    const boost::shared_ptr<const Schema> additionalProperties;
 
 };
 
@@ -389,7 +390,7 @@ struct TypeConstraint: BasicConstraint<TypeConstraint>
 
     typedef std::set<JsonType> JsonTypes;
 
-    typedef boost::ptr_vector<Schema> Schemas;
+    typedef std::vector<boost::shared_ptr<Schema> > Schemas;
 
     TypeConstraint(const JsonType jsonType)
       : jsonTypes(makeJsonTypes(jsonType)) { }

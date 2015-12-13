@@ -115,10 +115,10 @@ public:
 
         // Validate against each child schema
         unsigned int index = 0;
-        BOOST_FOREACH( const Schema &schema, constraint.schemas ) {
+        BOOST_FOREACH( boost::shared_ptr<const Schema> schema, constraint.schemas ) {
 
             // Ensure that the target validates against child schema
-            if (!validateSchema(schema)) {
+            if (!validateSchema(*schema)) {
                 if (results) {
                     validated = false;
                     results->pushError(context,
@@ -160,8 +160,8 @@ public:
         // visitor (*this).
         Schema::ApplyFunction fn(boost::bind(validationCallback, _1, *this));
 
-        BOOST_FOREACH( const Schema &schema, constraint.schemas ) {
-            if (schema.apply(fn)) {
+        BOOST_FOREACH( boost::shared_ptr<const Schema> schema, constraint.schemas ) {
+            if (schema->apply(fn)) {
                 return true;
             }
         }
@@ -230,7 +230,7 @@ public:
             // dependent schema.
             PDSM::const_iterator depSchemasItr = depSchemas.find(m.first);
             if (depSchemasItr != depSchemas.end()) {
-                const Schema *schema = depSchemasItr->second;
+                boost::shared_ptr<const Schema> schema = depSchemasItr->second;
                 if (!validateSchema(*schema)) {
                     if (results) {
                         results->pushError(context, "Failed to validate against dependent schema.");
@@ -360,7 +360,7 @@ public:
                             boost::lexical_cast<std::string>(index) + " in array due to missing schema.");
                         validated = false;
                     }
-                } else if (!v.validateSchema(constraint.itemSchemas->at(index))) {
+                } else if (!v.validateSchema(*constraint.itemSchemas->at(index))) {
                     if (results) {
                         results->pushError(context, "Failed to validate item #" +
                             boost::lexical_cast<std::string>(index) + " against corresponding item schema.");
@@ -758,9 +758,9 @@ public:
         ValidationResults newResults;
         ValidationResults *childResults = (results) ? &newResults : NULL;
 
-        BOOST_FOREACH( const Schema &schema, constraint.schemas ) {
+        BOOST_FOREACH( boost::shared_ptr<const Schema> schema, constraint.schemas ) {
             ValidationVisitor<AdapterType> v(target, context, strictTypes, childResults);
-            if (v.validateSchema(schema)) {
+            if (v.validateSchema(*schema)) {
                 numValidated++;
             }
         }
@@ -998,8 +998,8 @@ public:
             }
         }
 
-        BOOST_FOREACH( const Schema &schema, constraint.schemas ) {
-            if (validateSchema(schema)) {
+        BOOST_FOREACH( boost::shared_ptr<const Schema> schema, constraint.schemas ) {
+            if (validateSchema(*schema)) {
                 return true;
             }
         }

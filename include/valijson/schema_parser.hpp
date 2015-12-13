@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include <boost/foreach.hpp>
+#include <boost/make_shared.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/static_assert.hpp>
 #include <boost/type_traits.hpp>
@@ -419,9 +420,9 @@ private:
         constraints::AllOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
-                childSchemas.push_back(new Schema);
+                childSchemas.push_back(boost::make_shared<Schema>());
                 populateSchema<AdapterType>(rootNode, schemaNode,
-                        childSchemas.back(), fetchDoc);
+                        *childSchemas.back(), fetchDoc);
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'allOf' constraint.");
             }
@@ -456,9 +457,9 @@ private:
         constraints::AnyOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
-                childSchemas.push_back(new Schema);
+                childSchemas.push_back(boost::make_shared<Schema>());
                 populateSchema<AdapterType>(rootNode, schemaNode,
-                        childSchemas.back(), fetchDoc);
+                        *childSchemas.back(), fetchDoc);
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'anyOf' constraint.");
             }
@@ -542,9 +543,10 @@ private:
             // process it as a dependent schema.
             } else if (member.second.isObject()) {
                 // Parse dependent subschema
-                Schema &childSchema = pdsm[member.first];
+                boost::shared_ptr<Schema> childSchema = pdsm[member.first] =
+                        boost::make_shared<Schema>();
                 populateSchema<AdapterType>(rootNode, member.second,
-                        childSchema, fetchDoc);
+                        *childSchema, fetchDoc);
 
             // If we're supposed to be parsing a Draft3 schema, then the value
             // of the dependency mapping can also be a string containing the
@@ -613,7 +615,7 @@ private:
     {
         // Construct a Schema object for the the additionalItems constraint,
         // if the additionalItems property is present
-        boost::scoped_ptr<Schema> additionalItemsSchema;
+        boost::shared_ptr<Schema> additionalItemsSchema;
         if (additionalItems) {
             if (additionalItems->maybeBool()) {
                 // If the value of the additionalItems property is a boolean
@@ -653,8 +655,8 @@ private:
                 // validate the values at the corresponding indexes in a target
                 // array.
                 BOOST_FOREACH( const AdapterType v, items->getArray() ) {
-                    itemSchemas.push_back(new Schema());
-                    Schema &childSchema = itemSchemas.back();
+                    itemSchemas.push_back(boost::make_shared<Schema>());
+                    Schema &childSchema = *itemSchemas.back();
                     populateSchema<AdapterType>(rootNode, v, childSchema,
                             fetchDoc);
                 }
@@ -983,9 +985,9 @@ private:
     {
         constraints::OneOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.getArray() ) {
-            childSchemas.push_back(new Schema);
+            childSchemas.push_back(boost::make_shared<Schema>());
             populateSchema<AdapterType>(rootNode, schemaNode,
-                childSchemas.back(), fetchDoc);
+                *childSchemas.back(), fetchDoc);
         }
 
         /// @todo: bypass deep copy of the child schemas
@@ -1050,9 +1052,11 @@ private:
         if (properties) {
             BOOST_FOREACH( const Member m, properties->getObject() ) {
                 const std::string &propertyName = m.first;
-                Schema &childSchema = propertySchemas[propertyName];
+                boost::shared_ptr<Schema> childSchema =
+                        propertySchemas[propertyName] =
+                                boost::make_shared<Schema>();
                 populateSchema<AdapterType>(
-                    rootNode, m.second, childSchema,          // Required
+                    rootNode, m.second, *childSchema,         // Required
                     fetchDoc, parentSchema, &propertyName);   // Optional
             }
         }
@@ -1063,15 +1067,17 @@ private:
         if (patternProperties) {
             BOOST_FOREACH( const Member m, patternProperties->getObject() ) {
                 const std::string &propertyName = m.first;
-                Schema &childSchema = patternPropertySchemas[propertyName];
+                boost::shared_ptr<Schema> childSchema =
+                        patternPropertySchemas[propertyName] =
+                                boost::make_shared<Schema>();
                 populateSchema<AdapterType>(
-                    rootNode, m.second, childSchema,          // Required
+                    rootNode, m.second, *childSchema,         // Required
                     fetchDoc, parentSchema, &propertyName);   // Optional
             }
         }
 
         // Populate an additionalItems schema if required
-        boost::scoped_ptr<Schema> additionalPropertiesSchema;
+        boost::shared_ptr<Schema> additionalPropertiesSchema;
         if (additionalProperties) {
             // If additionalProperties has been set, check for a boolean value.
             // Setting 'additionalProperties' to true allows the values of
@@ -1212,16 +1218,16 @@ private:
                     jsonTypes.insert(jsonType);
                 } else if (v.isObject() && version == kDraft3) {
                     // Schema!
-                    schemas.push_back(new Schema());
-                    populateSchema<AdapterType>(rootNode, v, schemas.back(),
+                    schemas.push_back(boost::make_shared<Schema>());
+                    populateSchema<AdapterType>(rootNode, v, *schemas.back(),
                             fetchDoc);
                 } else {
                     throw std::runtime_error("Type name should be a string.");
                 }
             }
         } else if (node.isObject() && version == kDraft3) {
-            schemas.push_back(new Schema());
-            populateSchema<AdapterType>(rootNode, node, schemas.back(),
+            schemas.push_back(boost::make_shared<Schema>());
+            populateSchema<AdapterType>(rootNode, node, *schemas.back(),
                     fetchDoc);
         } else {
             throw std::runtime_error("Type name should be a string.");
