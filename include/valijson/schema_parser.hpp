@@ -52,10 +52,11 @@ public:
      * @brief  Struct to contain templated function type for fetching documents
      */
     template<typename AdapterType>
-    struct FetchDocumentFunction {
-        /// Functor for dereferencing JSON References
-        typedef boost::function<boost::shared_ptr<const AdapterType>(
-                const std::string &uri)> Type;
+    struct FunctionPtrs
+    {
+        /// Templated function pointer type for fetching remote documents
+        typedef const AdapterType * (*FetchDoc)(const std::string &uri);
+
     };
 
     /**
@@ -74,8 +75,7 @@ public:
     void populateSchema(
         const AdapterType &node,
         Schema &schema,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type>
-                fetchDoc = boost::none)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL)
     {
         populateSchema(node, node, schema, boost::none, fetchDoc, NULL, NULL);
     }
@@ -108,8 +108,7 @@ private:
         const AdapterType &node,
         Schema &schema,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type>
-                fetchDoc = boost::none,
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
@@ -343,8 +342,7 @@ private:
         const AdapterType &node,
         Schema &schema,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type>
-                fetchDoc,
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
@@ -367,8 +365,7 @@ private:
             // Returns a shared pointer to the remote document that was
             // retrieved, or null if retrieval failed. The resulting document
             // must remain in scope until populateSchema returns.
-            boost::shared_ptr<const AdapterType> docPtr =
-                    (*fetchDoc)(*documentUri);
+            const AdapterType* docPtr = fetchDoc(*documentUri);
 
             // Can't proceed without the remote document
             if (!docPtr) {
@@ -411,7 +408,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type > fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeArray()) {
             throw std::runtime_error("Expected array value for 'allOf' constraint.");
@@ -450,7 +447,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type > fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeArray()) {
             throw std::runtime_error("Expected array value for 'anyOf' constraint.");
@@ -507,8 +504,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type >
-                fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeObject()) {
             throw std::runtime_error("Expected object value for 'dependencies' constraint.");
@@ -616,8 +612,7 @@ private:
         const AdapterType *items,
         const AdapterType *additionalItems,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type >
-                fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         // Construct a Schema object for the the additionalItems constraint,
         // if the additionalItems property is present
@@ -962,7 +957,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type > fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (node.maybeObject()) {
             Schema childSchema;
@@ -991,8 +986,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type >
-                fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         constraints::OneOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.getArray() ) {
@@ -1052,8 +1046,7 @@ private:
         const AdapterType *patternProperties,
         const AdapterType *additionalProperties,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type >
-                fetchDoc,
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
         Schema *parentSchema)
     {
         typedef typename AdapterType::ObjectMember Member;
@@ -1208,8 +1201,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
-        boost::optional<typename FetchDocumentFunction<AdapterType>::Type >
-                fetchDoc)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         typedef constraints::TypeConstraint TC;
 

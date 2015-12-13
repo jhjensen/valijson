@@ -13,9 +13,6 @@ using valijson::SchemaParser;
 using valijson::adapters::RapidJsonAdapter;
 using valijson::Validator;
 
-typedef SchemaParser::FetchDocumentFunction<RapidJsonAdapter>::Type
-        FetchDocumentFunction;
-
 namespace {
 
 static rapidjson::MemoryPoolAllocator<rapidjson::CrtAllocator> allocator;
@@ -29,7 +26,7 @@ class TestFetchDocumentCallback : public ::testing::Test
 
 };
 
-boost::shared_ptr<const RapidJsonAdapter> fetchDocument(const std::string &uri)
+const RapidJsonAdapter * fetchDocument(const std::string &uri)
 {
     EXPECT_STREQ("test", uri.c_str());
 
@@ -49,7 +46,7 @@ boost::shared_ptr<const RapidJsonAdapter> fetchDocument(const std::string &uri)
 
     // Have to ensure that fetchedRoot exists for at least as long as the
     // shared pointer that we return here
-    return boost::make_shared<RapidJsonAdapter>(fetchedRoot);
+    return new RapidJsonAdapter(fetchedRoot);
 }
 
 TEST_F(TestFetchDocumentCallback, Basics)
@@ -63,8 +60,7 @@ TEST_F(TestFetchDocumentCallback, Basics)
     // Parse schema document
     Schema schema;
     SchemaParser schemaParser;
-    schemaParser.populateSchema(schemaDocumentAdapter, schema,
-            boost::make_optional<FetchDocumentFunction>(fetchDocument));
+    schemaParser.populateSchema(schemaDocumentAdapter, schema, fetchDocument);
 
     // Test resulting schema with a valid document
     rapidjson::Document validDocument;
