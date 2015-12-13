@@ -14,6 +14,7 @@
 #include <valijson/constraints/concrete_constraints.hpp>
 #include <valijson/internal/json_pointer.hpp>
 #include <valijson/internal/json_reference.hpp>
+#include <valijson/internal/uri.hpp>
 #include <valijson/schema.hpp>
 
 namespace valijson {
@@ -87,6 +88,52 @@ public:
 private:
 
     /**
+     * @brief  Find the absolute URI for a document, within a resolution scope
+     *
+     * This function captures five different cases that can occur when
+     * attempting to resolve a document URI within a particular resolution
+     * scope:
+     *
+     *  - resolution scope not present, but absolute document URI is
+     *       => document URI as-is
+     *  - resolution scope not present, and document URI is relative or absent
+     *       => no result
+     *  - resolution scope is present, and document URI is a relative path
+     *       => resolve document URI relative to resolution scope
+     *  - resolution scope is present, and document URI is absolute
+     *       => document URI as-is
+     *  - resolution scope is present, but document URI is not
+     *       => resolution scope as-is
+     *
+     * This function assumes that the resolution scope is absolute.
+     *
+     * When resolving a document URI relative to the resolution scope, the
+     * document URI should be used to replace the path, query and fragment
+     * portions of URI provided by the resolution scope.
+     */
+    static boost::optional<std::string> findAbsoluteDocumentUri(
+            const boost::optional<std::string> resolutionScope,
+            const boost::optional<std::string> documentUri)
+    {
+        if (resolutionScope) {
+            if (documentUri) {
+                if (internal::uri::isUriAbsolute(*documentUri)) {
+                    return *documentUri;
+                } else {
+                    return internal::uri::resolveRelativeUri(
+                            *resolutionScope, *documentUri);
+                }
+            } else {
+                return *resolutionScope;
+            }
+        } else if (documentUri && internal::uri::isUriAbsolute(*documentUri)) {
+            return *documentUri;
+        } else {
+            return boost::none;
+        }
+    }
+
+    /**
      * @brief  Populate a Schema object from JSON Schema document
      *
      * When processing Draft 3 schemas, the parentSchema and ownName pointers
@@ -143,7 +190,14 @@ private:
 
         if ((itr = object.find("id")) != object.end()) {
             if (itr->second.maybeString()) {
-                schema.setId(itr->second.asString());
+                const std::string id = itr->second.asString();
+                schema.setId(id);
+                if (currentScope) {
+                    currentScope = internal::uri::resolveRelativeUri(
+                            *currentScope, id);
+                } else {
+                    currentScope = id;
+                }
             }
         }
 
@@ -356,41 +410,57 @@ private:
                 internal::json_reference::getJsonReferenceUri(jsonRef);
 
         // Extract JSON Pointer from JSON Reference
-        const std::string jsonPointer =
+        const boost::optional<std::string> jsonPointer =
                 internal::json_reference::getJsonReferencePointer(jsonRef);
 
-        if (documentUri) {
+        // If the JSON Pointer portion of the string is not present, assume
+        // that the URI points to the root of the document that it references
+        const std::string actualJsonPointer = jsonPointer ? *jsonPointer : "/";
+
+        // Determine the actual document URI based on the resolution scope
+        const boost::optional<std::string> actualDocumentUri =
+                findAbsoluteDocumentUri(currentScope, documentUri);
+
+        if (actualDocumentUri) {
             // Resolve reference against remote document
             if (!fetchDoc) {
                 throw std::runtime_error(
-                        "Support for JSON References not enabled.");
+                        "Fetching of remote JSON References not enabled.");
             }
 
-            // Returns a shared pointer to the remote document that was
-            // retrieved, or null if retrieval failed. The resulting document
-            // must remain in scope until populateSchema returns.
-            const AdapterType* docPtr = fetchDoc(*documentUri);
+            // Returns a pointer to the remote document that was retrieved, or
+            // null if retrieval failed. This class will take ownership of the
+            // pointer, and call freeDoc when it is no longer needed.
+            // TODO: need to track this pointer
+            const AdapterType *newRootNode = fetchDoc(*actualDocumentUri);
 
             // Can't proceed without the remote document
-            if (!docPtr) {
+            if (!newRootNode) {
                 throw std::runtime_error(
-                        "Failed to fetch referenced schema document.");
+                        "Failed to fetch referenced schema document: " +
+                        *actualDocumentUri);
             }
 
-            const AdapterType &ref = internal::json_pointer::resolveJsonPointer(
-                    *docPtr, jsonPointer);
+            const AdapterType &referencedAdapter =
+                    internal::json_pointer::resolveJsonPointer(
+                            *newRootNode, actualJsonPointer);
 
             // Resolve reference against retrieved document
-            populateSchema<AdapterType>(ref, ref, schema, currentScope,
-                    fetchDoc, parentSchema, ownName);
+            populateSchema<AdapterType>(*newRootNode, referencedAdapter, schema,
+                    currentScope, fetchDoc, parentSchema, ownName);
 
         } else {
-            const AdapterType &ref = internal::json_pointer::resolveJsonPointer(
-                    rootNode, jsonPointer);
+            // Resolve JSON Reference local to the current document
+            const AdapterType &referencedAdapter =
+                    internal::json_pointer::resolveJsonPointer(
+                            rootNode, actualJsonPointer);
 
-            // Resolve reference against current document
-            populateSchema<AdapterType>(rootNode, ref, schema, currentScope,
-                    fetchDoc, parentSchema, ownName);
+            // Parser schema found a resolved location. This schema will
+            // continue to parsed in the context of the current document and
+            // resolution scope
+            populateSchema<AdapterType>(rootNode, referencedAdapter, schema,
+                    currentScope, fetchDoc, parentSchema, ownName);
+
         }
     }
 
