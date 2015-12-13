@@ -18,6 +18,8 @@
 #include <valijson/validation_results.hpp>
 #include <valijson/validator.hpp>
 
+#define REMOTES_DIR "../thirdparty/JSON-Schema-Test-Suite/remotes/"
+
 #define TEST_SUITE_DIR "../thirdparty/JSON-Schema-Test-Suite/tests/"
 
 using valijson::adapters::AdapterTraits;
@@ -25,6 +27,45 @@ using valijson::adapters::RapidJsonAdapter;
 using valijson::Schema;
 using valijson::SchemaParser;
 using valijson::Validator;
+
+std::string getRelativePath(const std::string &uri)
+{
+    const std::string dummyUri = "http://localhost:1234/";
+    size_t n = uri.find(dummyUri);
+    if (n != std::string::npos) {
+        return REMOTES_DIR + uri.substr(dummyUri.size());
+    }
+
+    const std::string schemaUri = "http://json-schema.org/draft-04/schema";
+    n = uri.find(schemaUri);
+    if (n != std::string::npos) {
+        return "../doc/schema/draft-04.json";
+    }
+
+    throw std::runtime_error("Attempt fetchDoc of " + uri);
+}
+
+template<typename AdapterType>
+const AdapterType * fetchDocument(const std::string &uri)
+{
+    // TODO: Memory leak
+    typename AdapterTraits<AdapterType>::DocumentType *document =
+        new typename AdapterTraits<AdapterType>::DocumentType();
+
+    const std::string relativePath = getRelativePath(uri);
+
+    if (valijson::utils::loadDocument(relativePath, *document)) {
+        return new AdapterType(*document);
+    } else {
+        throw std::runtime_error("Failed fetchDoc of " + uri);
+    }
+}
+
+template<typename AdapterType>
+void freeDocument(const AdapterType *adapter)
+{
+    delete adapter;
+}
 
 class TestValidator : public ::testing::TestWithParam<const char *>
 {
@@ -67,7 +108,8 @@ protected:
                 // Parse schema
                 Schema schema;
                 SchemaParser parser(version);
-                parser.populateSchema(itr->second, schema);
+                parser.populateSchema(itr->second, schema,
+                        fetchDocument<AdapterType>, freeDocument<AdapterType>);
 
                 // For each test in the 'tests' array
                 itr = object.find("tests");
@@ -204,6 +246,11 @@ TEST_F(TestValidator, Draft3_Properties)
     processDraft3TestFile(TEST_SUITE_DIR "draft3/properties.json");
 }
 
+TEST_F(TestValidator, Draft3_RefRemote)
+{
+    processDraft3TestFile(TEST_SUITE_DIR "draft3/refRemote.json");
+}
+
 TEST_F(TestValidator, Draft3_Required)
 {
     processDraft3TestFile(TEST_SUITE_DIR "draft3/required.json");
@@ -322,6 +369,11 @@ TEST_F(TestValidator, Draft4_PatternProperties)
 TEST_F(TestValidator, Draft4_Properties)
 {
     processDraft4TestFile(TEST_SUITE_DIR "draft4/properties.json");
+}
+
+TEST_F(TestValidator, Draft4_RefRemote)
+{
+    processDraft4TestFile(TEST_SUITE_DIR "draft4/refRemote.json");
 }
 
 TEST_F(TestValidator, Draft4_Required)
