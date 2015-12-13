@@ -134,6 +134,30 @@ private:
     }
 
     /**
+     * @brief  Placeholder function for proper schema re-use solution
+     *
+     * Currently this function will always create a new schema, but it should
+     * be replaced with a proper schema re-use solution that will return a
+     * shared_ptr for a schema that has already been parsed. This is to
+     * prevent infinite recursion in schemas that contain circular references.
+     */
+     template<typename AdapterType>
+     boost::shared_ptr<Schema> makeOrReuseSchema(
+         const AdapterType &rootNode,
+         const AdapterType &node,
+         boost::optional<std::string> currentScope,
+         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
+         Schema *parentSchema = NULL,
+         const std::string *ownName = NULL)
+     {
+         boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
+         populateSchema(rootNode, node, *schema, currentScope, fetchDoc,
+             parentSchema, ownName);
+
+         return schema;
+     }
+
+    /**
      * @brief  Populate a Schema object from JSON Schema document
      *
      * When processing Draft 3 schemas, the parentSchema and ownName pointers
@@ -491,9 +515,8 @@ private:
         constraints::AllOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
-                childSchemas.push_back(boost::make_shared<Schema>());
-                populateSchema<AdapterType>(rootNode, schemaNode,
-                        *childSchemas.back(), currentScope, fetchDoc);
+                childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
+                        currentScope, fetchDoc));
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'allOf' constraint.");
             }
@@ -530,9 +553,8 @@ private:
         constraints::AnyOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
-                childSchemas.push_back(boost::make_shared<Schema>());
-                populateSchema<AdapterType>(rootNode, schemaNode,
-                        *childSchemas.back(), currentScope, fetchDoc);
+                childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
+                        currentScope, fetchDoc));
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'anyOf' constraint.");
             }
@@ -617,10 +639,8 @@ private:
             // process it as a dependent schema.
             } else if (member.second.isObject()) {
                 // Parse dependent subschema
-                boost::shared_ptr<Schema> childSchema = pdsm[member.first] =
-                        boost::make_shared<Schema>();
-                populateSchema<AdapterType>(rootNode, member.second,
-                        *childSchema, currentScope, fetchDoc);
+                pdsm[member.first] = makeOrReuseSchema<AdapterType>(rootNode,
+                        member.second, currentScope, fetchDoc);
 
             // If we're supposed to be parsing a Draft3 schema, then the value
             // of the dependency mapping can also be a string containing the
@@ -730,16 +750,15 @@ private:
                 // validate the values at the corresponding indexes in a target
                 // array.
                 BOOST_FOREACH( const AdapterType v, items->getArray() ) {
-                    itemSchemas.push_back(boost::make_shared<Schema>());
-                    Schema &childSchema = *itemSchemas.back();
-                    populateSchema<AdapterType>(rootNode, v, childSchema,
-                            currentScope, fetchDoc);
+                    itemSchemas.push_back(makeOrReuseSchema<AdapterType>(
+                            rootNode, v, currentScope, fetchDoc));
                 }
 
                 // Create an ItemsConstraint object using the appropriate
                 // overloaded constructor.
                 if (additionalItemsSchema) {
-                    return new constraints::ItemsConstraint(itemSchemas, *additionalItemsSchema);
+                    return new constraints::ItemsConstraint(itemSchemas,
+                            *additionalItemsSchema);
                 } else {
                     return new constraints::ItemsConstraint(itemSchemas);
                 }
@@ -749,13 +768,15 @@ private:
                 // should contain a Schema that will be used to validate all
                 // items in a target array. Any schema defined by the
                 // additionalItems constraint will be ignored.
-                Schema childSchema;
-                populateSchema<AdapterType>(rootNode, *items, childSchema,
-                        currentScope, fetchDoc);
+                boost::shared_ptr<Schema> childSchema =
+                        makeOrReuseSchema<AdapterType>(rootNode, *items,
+                                currentScope, fetchDoc);
                 if (additionalItemsSchema) {
-                    return new constraints::ItemsConstraint(childSchema, *additionalItemsSchema);
+                    // TODO: ItemsConstraint should probably stored shared_ptr
+                    return new constraints::ItemsConstraint(*childSchema,
+                            *additionalItemsSchema);
                 } else {
-                    return new constraints::ItemsConstraint(childSchema);
+                    return new constraints::ItemsConstraint(*childSchema);
                 }
 
             } else if (items->maybeObject()) {
@@ -763,7 +784,8 @@ private:
                 // assume that an empty schema has been provided.
                 Schema childSchema;
                 if (additionalItemsSchema) {
-                    return new constraints::ItemsConstraint(childSchema, *additionalItemsSchema);
+                    return new constraints::ItemsConstraint(childSchema,
+                            *additionalItemsSchema);
                 } else {
                     return new constraints::ItemsConstraint(childSchema);
                 }
@@ -776,7 +798,8 @@ private:
 
         Schema emptySchema;
         if (additionalItemsSchema) {
-            return new constraints::ItemsConstraint(emptySchema, *additionalItemsSchema);
+            return new constraints::ItemsConstraint(emptySchema,
+                    *additionalItemsSchema);
         }
 
         return new constraints::ItemsConstraint(emptySchema);
@@ -1064,9 +1087,8 @@ private:
     {
         constraints::OneOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.getArray() ) {
-            childSchemas.push_back(boost::make_shared<Schema>());
-            populateSchema<AdapterType>(rootNode, schemaNode,
-                *childSchemas.back(), currentScope, fetchDoc);
+            childSchemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
+                schemaNode, currentScope, fetchDoc));
         }
 
         /// @todo: bypass deep copy of the child schemas
@@ -1132,12 +1154,9 @@ private:
         if (properties) {
             BOOST_FOREACH( const Member m, properties->getObject() ) {
                 const std::string &propertyName = m.first;
-                boost::shared_ptr<Schema> childSchema =
-                        propertySchemas[propertyName] =
-                                boost::make_shared<Schema>();
-                populateSchema<AdapterType>(
-                    rootNode, m.second, *childSchema, currentScope, fetchDoc,
-                    parentSchema, &propertyName);
+                propertySchemas[propertyName] = makeOrReuseSchema<AdapterType>(
+                        rootNode, m.second, currentScope, fetchDoc,
+                        parentSchema, &propertyName);
             }
         }
 
@@ -1147,12 +1166,10 @@ private:
         if (patternProperties) {
             BOOST_FOREACH( const Member m, patternProperties->getObject() ) {
                 const std::string &propertyName = m.first;
-                boost::shared_ptr<Schema> childSchema =
-                        patternPropertySchemas[propertyName] =
-                                boost::make_shared<Schema>();
-                populateSchema<AdapterType>(
-                    rootNode, m.second, *childSchema, currentScope, fetchDoc,
-                    parentSchema, &propertyName);
+                patternPropertySchemas[propertyName] =
+                        makeOrReuseSchema<AdapterType>(
+                                rootNode, m.second, currentScope, fetchDoc,
+                                parentSchema, &propertyName);
             }
         }
 
@@ -1298,18 +1315,15 @@ private:
                     }
                     jsonTypes.insert(jsonType);
                 } else if (v.isObject() && version == kDraft3) {
-                    // Schema!
-                    schemas.push_back(boost::make_shared<Schema>());
-                    populateSchema<AdapterType>(rootNode, v, *schemas.back(),
-                            currentScope, fetchDoc);
+                    schemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
+                            v, currentScope, fetchDoc));
                 } else {
                     throw std::runtime_error("Type name should be a string.");
                 }
             }
         } else if (node.isObject() && version == kDraft3) {
-            schemas.push_back(boost::make_shared<Schema>());
-            populateSchema<AdapterType>(rootNode, node, *schemas.back(),
-                    currentScope, fetchDoc);
+            schemas.push_back(makeOrReuseSchema<AdapterType>(rootNode, node,
+                    currentScope, fetchDoc));
         } else {
             throw std::runtime_error("Type name should be a string.");
         }
