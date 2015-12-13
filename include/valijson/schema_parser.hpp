@@ -57,6 +57,8 @@ public:
         /// Templated function pointer type for fetching remote documents
         typedef const AdapterType * (*FetchDoc)(const std::string &uri);
 
+        /// Templated function pointer type for freeing fetched documents
+        typedef void (*FreeDoc)(const AdapterType *);
     };
 
     /**
@@ -70,12 +72,14 @@ public:
      * @param  node          Reference to node to parse
      * @param  schema        Reference to Schema to populate
      * @param  fetchDoc      Function to fetch remote JSON documents (optional)
+     * @param  freeDoc       Function to free fetched documents (optional)
      */
     template<typename AdapterType>
     void populateSchema(
         const AdapterType &node,
         Schema &schema,
-        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL)
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
+        typename FunctionPtrs<AdapterType>::FreeDoc freeDoc = NULL)
     {
         populateSchema(node, node, schema, boost::none, fetchDoc, NULL, NULL);
     }

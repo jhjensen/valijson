@@ -49,6 +49,11 @@ const RapidJsonAdapter * fetchDocument(const std::string &uri)
     return new RapidJsonAdapter(fetchedRoot);
 }
 
+void freeDocument(const RapidJsonAdapter *adapter)
+{
+    delete adapter;
+}
+
 TEST_F(TestFetchDocumentCallback, Basics)
 {
     // Define schema
@@ -60,7 +65,8 @@ TEST_F(TestFetchDocumentCallback, Basics)
     // Parse schema document
     Schema schema;
     SchemaParser schemaParser;
-    schemaParser.populateSchema(schemaDocumentAdapter, schema, fetchDocument);
+    schemaParser.populateSchema(schemaDocumentAdapter, schema, fetchDocument,
+            freeDocument);
 
     // Test resulting schema with a valid document
     rapidjson::Document validDocument;
