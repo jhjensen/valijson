@@ -82,7 +82,7 @@ public:
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
         typename FunctionPtrs<AdapterType>::FreeDoc freeDoc = NULL)
     {
-        populateSchema(node, node, schema, boost::none, fetchDoc, NULL, NULL);
+        populateSchema(node, node, schema, boost::none, "#", fetchDoc, NULL, NULL);
     }
 
 private:
@@ -150,13 +150,14 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
         boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
-        populateSchema(rootNode, node, *schema, currentScope, fetchDoc,
-                parentSchema, ownName);
+        populateSchema(rootNode, node, *schema, currentScope, nodePath,
+                fetchDoc, parentSchema, ownName);
 
         return schema;
     }
@@ -175,6 +176,7 @@ private:
      * @param  node          Reference to node to parse
      * @param  schema        Reference to Schema to populate
      * @param  currentScope  URI for current resolution scope
+     * @param  nodePath      JSON Pointer representing path to current node
      * @param  fetchDoc      Function to fetch remote JSON documents (optional)
      * @param  parentSchema  Optional pointer to the parent schema, used to
      *                       support required keyword in Draft 3.
@@ -187,6 +189,7 @@ private:
         const AdapterType &node,
         Schema &schema,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
@@ -208,7 +211,8 @@ private:
                 }
                 const std::string &jsonRef = itr->second.asString();
                 populateSchemaUsingJsonReference(jsonRef, rootNode, node,
-                        schema, currentScope, fetchDoc, parentSchema, ownName);
+                        schema, currentScope, nodePath, fetchDoc,
+                        parentSchema, ownName);
                 return;
             }
         }
@@ -231,17 +235,18 @@ private:
 
         if ((itr = object.find("allOf")) != object.end()) {
             schema.addConstraint(makeAllOfConstraint(rootNode, itr->second,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/allOf", fetchDoc));
         }
 
         if ((itr = object.find("anyOf")) != object.end()) {
             schema.addConstraint(makeAnyOfConstraint(rootNode, itr->second,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/anyOf", fetchDoc));
         }
 
         if ((itr = object.find("dependencies")) != object.end()) {
             schema.addConstraint(makeDependenciesConstraint(rootNode,
-                    itr->second, currentScope, fetchDoc));
+                    itr->second, currentScope, nodePath + "/dependencies",
+                    fetchDoc));
         }
 
         if ((itr = object.find("description")) != object.end()) {
@@ -276,7 +281,8 @@ private:
                 schema.addConstraint(makeItemsConstraint(rootNode,
                     itemsItr != object.end() ? &itemsItr->second : NULL,
                     additionalitemsItr != object.end() ? &additionalitemsItr->second : NULL,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/items",
+                    nodePath + "/additionalItems", fetchDoc));
             }
         }
 
@@ -336,12 +342,12 @@ private:
 
         if ((itr = object.find("not")) != object.end()) {
             schema.addConstraint(makeNotConstraint(rootNode, itr->second,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/not", fetchDoc));
         }
 
         if ((itr = object.find("oneOf")) != object.end()) {
             schema.addConstraint(makeOneOfConstraint(rootNode, itr->second,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/oneOf", fetchDoc));
         }
 
         if ((itr = object.find("pattern")) != object.end()) {
@@ -362,7 +368,9 @@ private:
                     propertiesItr != object.end() ? &propertiesItr->second : NULL,
                     patternPropertiesItr != object.end() ? &patternPropertiesItr->second : NULL,
                     additionalPropertiesItr != object.end() ? &additionalPropertiesItr->second : NULL,
-                    currentScope, fetchDoc, &schema));
+                    currentScope, nodePath + "/properties",
+                    nodePath + "/patternProperties",
+                    nodePath + "/additionalProperties", fetchDoc, &schema));
             }
         }
 
@@ -391,7 +399,7 @@ private:
 
         if ((itr = object.find("type")) != object.end()) {
             schema.addConstraint(makeTypeConstraint(rootNode, itr->second,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath + "/type", fetchDoc));
         }
 
         if ((itr = object.find("uniqueItems")) != object.end()) {
@@ -415,6 +423,7 @@ private:
      * @param  node          Reference to node to parse
      * @param  schema        Reference to Schema to populate
      * @param  currentScope  URI for current resolution scope
+     * @param  nodePath      JSON Pointer representing path to current node
      * @param  fetchDoc      Function to fetch remote JSON documents (optional)
      * @param  parentSchema  Optional pointer to the parent schema, used to
      *                       support required keyword in Draft 3.
@@ -428,6 +437,7 @@ private:
         const AdapterType &node,
         Schema &schema,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
@@ -475,7 +485,7 @@ private:
 
             // Resolve reference against retrieved document
             populateSchema<AdapterType>(*newRootNode, referencedAdapter, schema,
-                    currentScope, fetchDoc, parentSchema, ownName);
+                    currentScope, nodePath, fetchDoc, parentSchema, ownName);
 
         } else {
             // Resolve JSON Reference local to the current document
@@ -487,7 +497,7 @@ private:
             // continue to parsed in the context of the current document and
             // resolution scope
             populateSchema<AdapterType>(rootNode, referencedAdapter, schema,
-                    currentScope, fetchDoc, parentSchema, ownName);
+                    currentScope, nodePath, fetchDoc, parentSchema, ownName);
 
         }
     }
@@ -495,11 +505,12 @@ private:
     /**
      * @brief   Make a new AllOfConstraint object
      *
-     * @param  rootNode       Reference to the node from which JSON References
+     * @param   rootNode      Reference to the node from which JSON References
      *                        will be resolved when they refer to the current
      *                        document; used for recursive parsing of schemas
      * @param   node          JSON node containing an array of child schemas
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
      *
      * @return  pointer to a new AllOfConstraint object that belongs to the
@@ -510,6 +521,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeArray()) {
@@ -520,7 +532,7 @@ private:
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
                 childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
-                        currentScope, fetchDoc));
+                        currentScope, nodePath, fetchDoc));
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'allOf' constraint.");
             }
@@ -538,6 +550,7 @@ private:
      *                        document; used for recursive parsing of schemas
      * @param   node          JSON node containing an array of child schemas
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
      *
      * @return  pointer to a new AnyOfConstraint object that belongs to the
@@ -548,6 +561,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeArray()) {
@@ -558,7 +572,7 @@ private:
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
                 childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
-                        currentScope, fetchDoc));
+                        currentScope, nodePath, fetchDoc));
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'anyOf' constraint.");
             }
@@ -594,6 +608,7 @@ private:
      * @param   node          JSON node containing an object that defines a
      *                        mapping of properties to their dependencies.
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
      *
      * @return  pointer to a new DependencyConstraint that belongs to the
@@ -604,6 +619,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (!node.maybeObject()) {
@@ -644,7 +660,7 @@ private:
             } else if (member.second.isObject()) {
                 // Parse dependent subschema
                 pdsm[member.first] = makeOrReuseSchema<AdapterType>(rootNode,
-                        member.second, currentScope, fetchDoc);
+                        member.second, currentScope, nodePath, fetchDoc);
 
             // If we're supposed to be parsing a Draft3 schema, then the value
             // of the dependency mapping can also be a string containing the
@@ -689,18 +705,23 @@ private:
     /**
      * @brief   Make a new ItemsConstraint object.
      *
-     * @param   rootNode         Reference to the node from which JSON
-     *                           References will be resolved when they refer
-     *                           to the current document; used for recursive
-     *                           parsing of schemas
-     * @param   items            Optional pointer to a JSON node containing
-     *                           an object mapping property names to schemas.
-     * @param   additionalItems  Optional pointer to a JSON node containing
-     *                           an additional properties schema or a boolean
-     *                           value.
-     * @param   currentScope     URI for current resolution scope
-     * @param   fetchDoc         Function to fetch remote JSON documents
-     *                           (optional)
+     * @param   rootNode             Reference to the node from which JSON
+     *                               References will be resolved when they refer
+     *                               to the current document; used for recursive
+     *                               parsing of schemas
+     * @param   items                Optional pointer to a JSON node containing
+     *                               an object mapping property names to 
+     *                               schemas.
+     * @param   additionalItems      Optional pointer to a JSON node containing
+     *                               an additional properties schema or a
+     *                               boolean value.
+     * @param   currentScope         URI for current resolution scope
+     * @param   itemsPath            JSON Pointer representing the path to
+     *                               the 'items' node
+     * @param   additionalItemsPath  JSON Pointer representing the path to
+     *                               the 'additionalItems' node
+     * @param   fetchDoc             Function to fetch remote JSON documents
+     *                               (optional)
      *
      * @return  pointer to a new ItemsConstraint that belongs to the caller
      */
@@ -710,6 +731,8 @@ private:
         const AdapterType *items,
         const AdapterType *additionalItems,
         boost::optional<std::string> currentScope,
+        const std::string &itemsPath,
+        const std::string &additionalItemsPath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         // Construct a Schema object for the the additionalItems constraint,
@@ -727,9 +750,9 @@ private:
                 // If the value of the additionalItems property is an object,
                 // then it should be parsed into a Schema object, which will be
                 // used to validate additional array items.
-                additionalItemsSchema.reset(new Schema());
-                populateSchema<AdapterType>(rootNode, *additionalItems,
-                        *additionalItemsSchema, currentScope, fetchDoc);
+                additionalItemsSchema = makeOrReuseSchema<AdapterType>(
+                        rootNode, *additionalItems, currentScope,
+                        additionalItemsPath, fetchDoc);
             } else {
                 // Any other format for the additionalItems property will result
                 // in an exception being thrown.
@@ -753,9 +776,13 @@ private:
                 // contain a list of child schemas which will be used to
                 // validate the values at the corresponding indexes in a target
                 // array.
+                int index = 0;
                 BOOST_FOREACH( const AdapterType v, items->getArray() ) {
+                    const std::string path = itemsPath + "/" +
+                            boost::lexical_cast<std::string>(index);
                     itemSchemas.push_back(makeOrReuseSchema<AdapterType>(
-                            rootNode, v, currentScope, fetchDoc));
+                            rootNode, v, currentScope, path, fetchDoc));
+                    index++;
                 }
 
                 // Create an ItemsConstraint object using the appropriate
@@ -774,7 +801,7 @@ private:
                 // additionalItems constraint will be ignored.
                 boost::shared_ptr<Schema> childSchema =
                         makeOrReuseSchema<AdapterType>(rootNode, *items,
-                                currentScope, fetchDoc);
+                                currentScope, itemsPath, fetchDoc);
                 if (additionalItemsSchema) {
                     // TODO: ItemsConstraint should probably stored shared_ptr
                     return new constraints::ItemsConstraint(*childSchema,
@@ -1049,6 +1076,7 @@ private:
      *                        document; used for recursive parsing of schemas
      * @param   node          JSON node containing a schema
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
      *
      * @return  pointer to a new NotConstraint object that belongs to the caller
@@ -1058,12 +1086,13 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         if (node.maybeObject()) {
             Schema childSchema;
             populateSchema<AdapterType>(rootNode, node, childSchema,
-                    currentScope, fetchDoc);
+                    currentScope, nodePath, fetchDoc);
             return new constraints::NotConstraint(childSchema);
         }
 
@@ -1078,6 +1107,7 @@ private:
      *                        document; used for recursive parsing of schemas
      * @param   node          JSON node containing an array of child schemas
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
      *
      * @return  pointer to a new OneOfConstraint that belongs to the caller
@@ -1087,12 +1117,13 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         constraints::OneOfConstraint::Schemas childSchemas;
         BOOST_FOREACH ( const AdapterType schemaNode, node.getArray() ) {
             childSchemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
-                schemaNode, currentScope, fetchDoc));
+                    schemaNode, currentScope, nodePath, fetchDoc));
         }
 
         /// @todo: bypass deep copy of the child schemas
@@ -1117,25 +1148,31 @@ private:
     /**
      * @brief   Make a new Properties object.
      *
-     * @param   rootNode              Reference to the node from which JSON
-     *                                References will be resolved when they
-     *                                refer to the current document; used for 
-     *                                recursive parsing of schemas
-     * @param   properties            Optional pointer to a JSON node containing
-     *                                an object mapping property names to
-     *                                schemas.
-     * @param   patternProperties     Optional pointer to a JSON node containing
-     *                                an object mapping pattern property names
-     *                                to schemas.
-     * @param   additionalProperties  Optional pointer to a JSON node containing
-     *                                an additional properties schema or a
-     *                                boolean value.
-     * @param   currentScope          URI for current resolution scope
-     * @param   fetchDoc              Function to fetch remote JSON documents
-     *                                (optional)
-     * @param   parentSchema          Optional pointer to the Schema of the
-     *                                parent object, to support the 'required'
-     *                                keyword in Draft 3 of JSON Schema.
+     * @param   rootNode                  Reference to the node from which JSON
+     *                                    References will be resolved when they
+     *                                    refer to the current document; used
+     *                                    for recursive parsing of schemas
+     * @param   properties                Optional pointer to a JSON node
+     *                                    containing an object mapping property
+     *                                    names to schemas.
+     * @param   patternProperties         Optional pointer to a JSON node
+     *                                    containing an object mapping pattern
+     *                                    property names to schemas.
+     * @param   additionalProperties      Optional pointer to a JSON node
+     *                                    containing an additional properties
+     *                                    schema or a boolean value.
+     * @param   currentScope              URI for current resolution scope
+     * @param   propertiesPath            JSON Pointer representing the path to
+     *                                    the 'properties' node
+     * @param   patternPropertiesPath     JSON Pointer representing the path to
+     *                                    the 'patternProperties' node
+     * @param   additionalPropertiesPath  JSON Pointer representing the path to
+     *                                    the 'additionalProperties' node
+     * @param   fetchDoc                  Function to fetch remote JSON
+     *                                    documents (optional)
+     * @param   parentSchema              Optional pointer to the Schema of the
+     *                                    parent object, needed to support the
+     *                                    'required' keyword in Draft 3.
      *
      * @return  pointer to a new Properties that belongs to the caller
      */
@@ -1146,6 +1183,9 @@ private:
         const AdapterType *patternProperties,
         const AdapterType *additionalProperties,
         boost::optional<std::string> currentScope,
+        const std::string &propertiesPath,
+        const std::string &patternPropertiesPath,
+        const std::string &additionalPropertiesPath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
         Schema *parentSchema)
     {
@@ -1159,8 +1199,8 @@ private:
             BOOST_FOREACH( const Member m, properties->getObject() ) {
                 const std::string &propertyName = m.first;
                 propertySchemas[propertyName] = makeOrReuseSchema<AdapterType>(
-                        rootNode, m.second, currentScope, fetchDoc,
-                        parentSchema, &propertyName);
+                        rootNode, m.second, currentScope, propertiesPath,
+                        fetchDoc, parentSchema, &propertyName);
             }
         }
 
@@ -1172,8 +1212,9 @@ private:
                 const std::string &propertyName = m.first;
                 patternPropertySchemas[propertyName] =
                         makeOrReuseSchema<AdapterType>(
-                                rootNode, m.second, currentScope, fetchDoc,
-                                parentSchema, &propertyName);
+                                rootNode, m.second, currentScope,
+                                patternPropertiesPath, fetchDoc, parentSchema,
+                                &propertyName);
             }
         }
 
@@ -1199,7 +1240,8 @@ private:
                 // a child schema.
                 additionalPropertiesSchema.reset(new Schema());
                 populateSchema<AdapterType>(rootNode, *additionalProperties,
-                    *additionalPropertiesSchema, currentScope, fetchDoc);
+                        *additionalPropertiesSchema, currentScope,
+                        additionalPropertiesPath, fetchDoc);
             } else {
                 // All other types are invalid
                 throw std::runtime_error("Invalid type for 'additionalProperties' constraint.");
@@ -1214,8 +1256,8 @@ private:
             // If an additionalProperties schema has been created, construct a
             // new PropertiesConstraint object using that schema.
             return new constraints::PropertiesConstraint(
-                propertySchemas, patternPropertySchemas,
-                *additionalPropertiesSchema);
+                    propertySchemas, patternPropertySchemas,
+                    *additionalPropertiesSchema);
         }
 
         return new constraints::PropertiesConstraint(
@@ -1286,6 +1328,7 @@ private:
      *                        document; used for recursive parsing of schemas
      * @param   node          Node containing the name of a JSON type
      * @param   currentScope  URI for current resolution scope
+     * @param   nodePath      JSON Pointer representing path to current node
      * @param   fetchDoc      Function to fetch remote JSON documents (optional)
 
      *
@@ -1296,6 +1339,7 @@ private:
         const AdapterType &rootNode,
         const AdapterType &node,
         boost::optional<std::string> currentScope,
+        const std::string &nodePath,
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         typedef constraints::TypeConstraint TC;
@@ -1311,6 +1355,7 @@ private:
             jsonTypes.insert(jsonType);
 
         } else if (node.isArray()) {
+            int index = 0;
             BOOST_FOREACH( const AdapterType v, node.getArray() ) {
                 if (v.isString()) {
                     const TC::JsonType jsonType = TC::jsonTypeFromString(v.getString());
@@ -1319,15 +1364,19 @@ private:
                     }
                     jsonTypes.insert(jsonType);
                 } else if (v.isObject() && version == kDraft3) {
+                    const std::string path = nodePath + "/" +
+                            boost::lexical_cast<std::string>(index);
                     schemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
-                            v, currentScope, fetchDoc));
+                            v, currentScope, path, fetchDoc));
                 } else {
                     throw std::runtime_error("Type name should be a string.");
                 }
+
+                index++;
             }
         } else if (node.isObject() && version == kDraft3) {
             schemas.push_back(makeOrReuseSchema<AdapterType>(rootNode, node,
-                    currentScope, fetchDoc));
+                    currentScope, nodePath, fetchDoc));
         } else {
             throw std::runtime_error("Type name should be a string.");
         }
