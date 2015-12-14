@@ -87,6 +87,10 @@ public:
 
 private:
 
+    typedef std::map<std::string, boost::shared_ptr<Schema> > SchemaCache;
+
+    SchemaCache schemaCache;
+
     /**
      * @brief  Find the absolute URI for a document, within a resolution scope
      *
@@ -141,21 +145,21 @@ private:
      * shared_ptr for a schema that has already been parsed. This is to
      * prevent infinite recursion in schemas that contain circular references.
      */
-     template<typename AdapterType>
-     boost::shared_ptr<Schema> makeOrReuseSchema(
-         const AdapterType &rootNode,
-         const AdapterType &node,
-         boost::optional<std::string> currentScope,
-         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
-         Schema *parentSchema = NULL,
-         const std::string *ownName = NULL)
-     {
-         boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
-         populateSchema(rootNode, node, *schema, currentScope, fetchDoc,
-             parentSchema, ownName);
+    template<typename AdapterType>
+    boost::shared_ptr<Schema> makeOrReuseSchema(
+        const AdapterType &rootNode,
+        const AdapterType &node,
+        boost::optional<std::string> currentScope,
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
+        Schema *parentSchema = NULL,
+        const std::string *ownName = NULL)
+    {
+        boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
+        populateSchema(rootNode, node, *schema, currentScope, fetchDoc,
+                parentSchema, ownName);
 
-         return schema;
-     }
+        return schema;
+    }
 
     /**
      * @brief  Populate a Schema object from JSON Schema document
