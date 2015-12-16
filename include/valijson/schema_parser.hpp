@@ -529,10 +529,14 @@ private:
         }
 
         constraints::AllOfConstraint::Schemas childSchemas;
+        int index = 0;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
+                const std::string childPath = nodePath + "/" +
+                        boost::lexical_cast<std::string>(index);
                 childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
-                        currentScope, nodePath, fetchDoc));
+                        currentScope, childPath, fetchDoc));
+                index++;
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'allOf' constraint.");
             }
@@ -569,10 +573,14 @@ private:
         }
 
         constraints::AnyOfConstraint::Schemas childSchemas;
+        int index = 0;
         BOOST_FOREACH ( const AdapterType schemaNode, node.asArray() ) {
             if (schemaNode.maybeObject()) {
+                const std::string childPath = nodePath + "/" +
+                        boost::lexical_cast<std::string>(index);
                 childSchemas.push_back(makeOrReuseSchema(rootNode, schemaNode,
-                        currentScope, nodePath, fetchDoc));
+                        currentScope, childPath, fetchDoc));
+                index++;
             } else {
                 throw std::runtime_error("Expected array element to be an object value in 'anyOf' constraint.");
             }
@@ -778,10 +786,10 @@ private:
                 // array.
                 int index = 0;
                 BOOST_FOREACH( const AdapterType v, items->getArray() ) {
-                    const std::string path = itemsPath + "/" +
+                    const std::string childPath = itemsPath + "/" +
                             boost::lexical_cast<std::string>(index);
                     itemSchemas.push_back(makeOrReuseSchema<AdapterType>(
-                            rootNode, v, currentScope, path, fetchDoc));
+                            rootNode, v, currentScope, childPath, fetchDoc));
                     index++;
                 }
 
@@ -1121,9 +1129,13 @@ private:
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc)
     {
         constraints::OneOfConstraint::Schemas childSchemas;
+        int index = 0;
         BOOST_FOREACH ( const AdapterType schemaNode, node.getArray() ) {
+            const std::string childPath = nodePath + "/" +
+                    boost::lexical_cast<std::string>(index);
             childSchemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
-                    schemaNode, currentScope, nodePath, fetchDoc));
+                    schemaNode, currentScope, childPath, fetchDoc));
+            index++;
         }
 
         /// @todo: bypass deep copy of the child schemas
@@ -1198,8 +1210,10 @@ private:
         if (properties) {
             BOOST_FOREACH( const Member m, properties->getObject() ) {
                 const std::string &propertyName = m.first;
+                const std::string childPath = propertiesPath + "/" +
+                        propertyName;
                 propertySchemas[propertyName] = makeOrReuseSchema<AdapterType>(
-                        rootNode, m.second, currentScope, propertiesPath,
+                        rootNode, m.second, currentScope, childPath,
                         fetchDoc, parentSchema, &propertyName);
             }
         }
@@ -1210,10 +1224,12 @@ private:
         if (patternProperties) {
             BOOST_FOREACH( const Member m, patternProperties->getObject() ) {
                 const std::string &propertyName = m.first;
+                const std::string childPath = patternPropertiesPath + "/" +
+                        propertyName;
                 patternPropertySchemas[propertyName] =
                         makeOrReuseSchema<AdapterType>(
                                 rootNode, m.second, currentScope,
-                                patternPropertiesPath, fetchDoc, parentSchema,
+                                childPath, fetchDoc, parentSchema,
                                 &propertyName);
             }
         }
@@ -1364,10 +1380,10 @@ private:
                     }
                     jsonTypes.insert(jsonType);
                 } else if (v.isObject() && version == kDraft3) {
-                    const std::string path = nodePath + "/" +
+                    const std::string childPath = nodePath + "/" +
                             boost::lexical_cast<std::string>(index);
                     schemas.push_back(makeOrReuseSchema<AdapterType>(rootNode,
-                            v, currentScope, path, fetchDoc));
+                            v, currentScope, childPath, fetchDoc));
                 } else {
                     throw std::runtime_error("Type name should be a string.");
                 }
