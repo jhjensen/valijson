@@ -82,6 +82,7 @@ public:
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
         typename FunctionPtrs<AdapterType>::FreeDoc freeDoc = NULL)
     {
+        schemaCache.clear();
         populateSchema(node, node, schema, boost::none, "#", fetchDoc, NULL, NULL);
     }
 
@@ -155,7 +156,13 @@ private:
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
+        SchemaCache::iterator itr = schemaCache.find(nodePath);
+        if (itr != schemaCache.end()) {
+            return itr->second;
+        }
+
         boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
+        schemaCache.insert(SchemaCache::value_type(nodePath, schema));
         populateSchema(rootNode, node, *schema, currentScope, nodePath,
                 fetchDoc, parentSchema, ownName);
 
