@@ -425,9 +425,8 @@ private:
         if (input) {
             // Trim trailing slash(es)
             std::string sanitised = *input;
-            while (sanitised[sanitised.size() - 1] == '/') {
-                sanitised.pop_back();
-            }
+            sanitised.erase(sanitised.find_last_not_of('/') + 1,
+                    std::string::npos);
 
             return sanitised;
         }
