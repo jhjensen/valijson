@@ -418,6 +418,26 @@ private:
     }
 
     /**
+     * Sanitise an optional JSON Pointer, trimming trailing slashes
+     */
+    std::string sanitiseJsonPointer(const boost::optional<std::string> input)
+    {
+        if (input) {
+            // Trim trailing slash(es)
+            std::string sanitised = *input;
+            while (sanitised[sanitised.size() - 1] == '/') {
+                sanitised.pop_back();
+            }
+
+            return sanitised;
+        }
+
+        // If the JSON Pointer is not set, assume that the URI points to
+        // the root of the document
+        return "";
+    }
+
+    /**
      * @brief  Populate a schema using a JSON Reference
      *
      * Allows JSON references to be used with minimal changes to the parser
@@ -455,12 +475,8 @@ private:
                 internal::json_reference::getJsonReferenceUri(jsonRef);
 
         // Extract JSON Pointer from JSON Reference
-        const boost::optional<std::string> jsonPointer =
-                internal::json_reference::getJsonReferencePointer(jsonRef);
-
-        // If the JSON Pointer portion of the string is not present, assume
-        // that the URI points to the root of the document that it references
-        const std::string actualJsonPointer = jsonPointer ? *jsonPointer : "/";
+        const std::string actualJsonPointer = sanitiseJsonPointer(
+                internal::json_reference::getJsonReferencePointer(jsonRef));
 
         // Determine the actual document URI based on the resolution scope
         const boost::optional<std::string> actualDocumentUri =
@@ -492,7 +508,8 @@ private:
 
             // Resolve reference against retrieved document
             populateSchema<AdapterType>(*newRootNode, referencedAdapter, schema,
-                    currentScope, nodePath, fetchDoc, parentSchema, ownName);
+                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName);
 
         } else {
             // Resolve JSON Reference local to the current document
@@ -504,8 +521,8 @@ private:
             // continue to parsed in the context of the current document and
             // resolution scope
             populateSchema<AdapterType>(rootNode, referencedAdapter, schema,
-                    currentScope, nodePath, fetchDoc, parentSchema, ownName);
-
+                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName);
         }
     }
 
