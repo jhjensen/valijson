@@ -36,8 +36,14 @@ std::string getRelativePath(const std::string &uri)
         return REMOTES_DIR + uri.substr(dummyUri.size());
     }
 
-    const std::string schemaUri = "http://json-schema.org/draft-04/schema";
-    n = uri.find(schemaUri);
+    const std::string v3SchemaUri = "http://json-schema.org/draft-03/schema";
+    n = uri.find(v3SchemaUri);
+    if (n != std::string::npos) {
+        return "../doc/schema/draft-03.json";
+    }
+
+    const std::string v4SchemaUri = "http://json-schema.org/draft-04/schema";
+    n = uri.find(v4SchemaUri);
     if (n != std::string::npos) {
         return "../doc/schema/draft-04.json";
     }

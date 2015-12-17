@@ -82,11 +82,17 @@ public:
         typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc = NULL,
         typename FunctionPtrs<AdapterType>::FreeDoc freeDoc = NULL)
     {
+        documentCache.clear();
         schemaCache.clear();
-        populateSchema(node, node, schema, boost::none, "#", fetchDoc, NULL, NULL);
+
+        populateSchema(node, node, schema, boost::none, "", fetchDoc, NULL, NULL);
     }
 
 private:
+
+    typedef std::map<std::string, adapters::Adapter*> DocumentCache;
+
+    DocumentCache documentCache;
 
     typedef std::map<std::string, boost::shared_ptr<Schema> > SchemaCache;
 
@@ -139,12 +145,19 @@ private:
     }
 
     /**
-     * @brief  Placeholder function for proper schema re-use solution
+     * @brief  Return a potentially cached schema, parsed from the given node
      *
-     * Currently this function will always create a new schema, but it should
-     * be replaced with a proper schema re-use solution that will return a
-     * shared_ptr for a schema that has already been parsed. This is to
-     * prevent infinite recursion in schemas that contain circular references.
+     * @param  rootNode      Reference to the node from which JSON References
+     *                       will be resolved when they refer to the current
+     *                       document
+     * @param  node          Reference to the node to parse
+     * @param  currentScope  URI for current resolution scope
+     * @param  nodePath      JSON Pointer representing path to current node
+     * @param  fetchDoc      Function to fetch remote JSON documents (optional)
+     * @param  parentSchema  Optional pointer to the parent schema, used to
+     *                       support required keyword in Draft 3.
+     * @param  ownName       Optional pointer to a node name, used to support
+     *                       the 'required' keyword in Draft 3.
      */
     template<typename AdapterType>
     boost::shared_ptr<Schema> makeOrReuseSchema(
@@ -156,13 +169,129 @@ private:
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
-        SchemaCache::iterator itr = schemaCache.find(nodePath);
-        if (itr != schemaCache.end()) {
-            return itr->second;
+        // Check for JSON References and process them accordingly
+        if (node.isObject()) {
+            typename AdapterType::Object object = node.getObject();
+            const typename AdapterType::Object::const_iterator itr =
+                    object.find("$ref");
+            if (itr != object.end()) {
+                if (!itr->second.maybeString()) {
+                    throw std::runtime_error(
+                            "$ref property expected to contain string value.");
+                }
+
+                // Found a JSON Reference
+                const std::string &jsonRef = itr->second.asString();
+
+                // Returns a document URI if the reference points somewhere
+                // other than the current document
+                const boost::optional<std::string> documentUri =
+                        internal::json_reference::getJsonReferenceUri(jsonRef);
+
+                // Extract JSON Pointer from JSON Reference, with any trailing
+                // slashes removed so that keys in the schema cache end
+                // consistently
+                const std::string actualJsonPointer = sanitiseJsonPointer(
+                        internal::json_reference::getJsonReferencePointer(
+                                jsonRef));
+
+                // Determine the actual document URI based on the resolution
+                // scope. An absolute document URI will take precedence when
+                // present, otherwise we need to resolve the URI relative to
+                // the current resolution scope
+                const boost::optional<std::string> actualDocumentUri =
+                        findAbsoluteDocumentUri(currentScope, documentUri);
+
+                // Construct a key to search the schema cache for an existing
+                // schema parsed from this node
+                const std::string schemaCacheKey = actualDocumentUri ?
+                        (*actualDocumentUri + actualJsonPointer) :
+                        actualJsonPointer;
+
+                // Check schema cache
+                SchemaCache::iterator schemaCacheItr = schemaCache.find(
+                        schemaCacheKey);
+                if (schemaCacheItr != schemaCache.end()) {
+                    return schemaCacheItr->second;
+                }
+
+                // Not in schema cache; need to make sure we use the correct
+                // root node, so that JSON References in nested schemas are
+                // parsed correctly
+                const AdapterType *newRootNode;
+
+                if (actualDocumentUri) {
+                    // Have we seen this document before?
+                    DocumentCache::iterator docCacheItr =
+                            documentCache.find(*actualDocumentUri);
+                    if (docCacheItr == documentCache.end()) {
+                        // Resolve reference against remote document
+                        if (!fetchDoc) {
+                            throw std::runtime_error(
+                                    "Fetching of remote JSON References not "
+                                    "enabled.");
+                        }
+
+                        // Returns a pointer to the remote document that was
+                        // retrieved, or null if retrieval failed. This class
+                        // will take ownership of the pointer, and call freeDoc
+                        // when it is no longer needed.
+                        //
+                        // TODO: need to track this pointer
+                        //
+                        newRootNode = fetchDoc(*actualDocumentUri);
+
+                        // Can't proceed without the remote document
+                        if (!newRootNode) {
+                            throw std::runtime_error(
+                                    "Failed to fetch referenced schema "
+                                    "document: " + *actualDocumentUri);
+                        }
+
+                    } else {
+                        newRootNode = (AdapterType*)docCacheItr->second;
+                    }
+
+                } else {
+                    // JSON References in nested schema will be resolved
+                    // relative to current document
+                    newRootNode = &rootNode;
+                }
+
+                // Find where we need to be in the document
+                const AdapterType &referencedAdapter =
+                        internal::json_pointer::resolveJsonPointer(
+                                *newRootNode, actualJsonPointer);
+
+                // Add an entry to the schema cache. Although we have not
+                // finished parsing this schema, this ensures that nested
+                // references to it will receive a shared_ptr to the same
+                // schema instance
+                boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
+                schemaCache.insert(
+                        SchemaCache::value_type(schemaCacheKey, schema));
+
+                // Populate the schema relative to the new root node
+                populateSchema(*newRootNode, referencedAdapter, *schema,
+                        currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                        ownName);
+
+                return schema;
+            }
         }
 
+        // Node does not contain a JSON Reference, so we'll check whether it
+        // is already in the cache
+        const std::string schemaCacheKey = currentScope ?
+                (*currentScope + nodePath) : nodePath;
+        SchemaCache::iterator schemaCacheItr = schemaCache.find(schemaCacheKey);
+        if (schemaCacheItr != schemaCache.end()) {
+            return schemaCacheItr->second;
+        }
+
+        // Parse new schema
         boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
-        schemaCache.insert(SchemaCache::value_type(nodePath, schema));
+        schemaCache.insert(SchemaCache::value_type(schemaCacheKey, schema));
         populateSchema(rootNode, node, *schema, currentScope, nodePath,
                 fetchDoc, parentSchema, ownName);
 
@@ -206,6 +335,10 @@ private:
             "SchemaParser::populateSchema must be invoked with an "
             "appropriate Adapter implementation");
 
+        const typename AdapterType::Object object = node.asObject();
+        typename AdapterType::Object::const_iterator itr(object.end());
+
+
         // Check for JSON References and process them accordingly
         if (node.isObject()) {
             typename AdapterType::Object object = node.getObject();
@@ -217,23 +350,63 @@ private:
                             "$ref property expected to contain string value.");
                 }
                 const std::string &jsonRef = itr->second.asString();
-                populateSchemaUsingJsonReference(jsonRef, rootNode, node,
-                        schema, currentScope, nodePath, fetchDoc,
-                        parentSchema, ownName);
+
+                // Returns a document URI if the reference points somewhere
+                // other than the current document
+                const boost::optional<std::string> documentUri =
+                        internal::json_reference::getJsonReferenceUri(jsonRef);
+
+                // Extract JSON Pointer from JSON Reference
+                const std::string actualJsonPointer = sanitiseJsonPointer(
+                        internal::json_reference::getJsonReferencePointer(jsonRef));
+
+                const AdapterType *newRootNode;
+
+                if (documentUri && internal::uri::isUriAbsolute(*documentUri)) {
+                    // Fetch
+                    // Resolve reference against remote document
+                    if (!fetchDoc) {
+                        throw std::runtime_error(
+                                "Fetching of remote JSON References not enabled.");
+                    }
+
+                    newRootNode = fetchDoc(*documentUri);
+
+                    // Can't proceed without the remote document
+                    if (!newRootNode) {
+                        throw std::runtime_error(
+                                "Failed to fetch referenced schema document: " +
+                                *documentUri);
+                    }
+                } else {
+                    newRootNode = &rootNode;
+                }
+
+                const AdapterType &referencedAdapter =
+                    internal::json_pointer::resolveJsonPointer(
+                            *newRootNode, actualJsonPointer);
+
+                populateSchema(*newRootNode, referencedAdapter,
+                        schema, currentScope, "", fetchDoc, parentSchema,
+                        ownName);
+
                 return;
             }
         }
 
-        const typename AdapterType::Object object = node.asObject();
-        typename AdapterType::Object::const_iterator itr(object.end());
+
 
         if ((itr = object.find("id")) != object.end()) {
             if (itr->second.maybeString()) {
                 const std::string id = itr->second.asString();
                 schema.setId(id);
                 if (currentScope) {
-                    currentScope = internal::uri::resolveRelativeUri(
-                            *currentScope, id);
+                    if (internal::uri::isUriAbsolute(id)) {
+                        currentScope = id;
+                    } else {
+                        currentScope = internal::uri::resolveRelativeUri(
+                                *currentScope, id);
+                    }
                 } else {
                     currentScope = id;
                 }
@@ -436,93 +609,20 @@ private:
         return "";
     }
 
-    /**
-     * @brief  Populate a schema using a JSON Reference
-     *
-     * Allows JSON references to be used with minimal changes to the parser
-     * helper functions.
-     *
-     * @param  jsonRef       String containing JSON Reference value
-     * @param  rootNode      Reference to the node from which JSON References
-     *                       will be resolved when they refer to the current
-     *                       document; used for recursive parsing of schemas
-     * @param  node          Reference to node to parse
-     * @param  schema        Reference to Schema to populate
-     * @param  currentScope  URI for current resolution scope
-     * @param  nodePath      JSON Pointer representing path to current node
-     * @param  fetchDoc      Function to fetch remote JSON documents (optional)
-     * @param  parentSchema  Optional pointer to the parent schema, used to
-     *                       support required keyword in Draft 3.
-     * @param  ownName       Optional pointer to a node name, used to support
-     *                       the 'required' keyword in Draft 3.
-    */
-    template<typename AdapterType>
-    void populateSchemaUsingJsonReference(
-        const std::string &jsonRef,
-        const AdapterType &rootNode,
-        const AdapterType &node,
-        Schema &schema,
-        boost::optional<std::string> currentScope,
-        const std::string &nodePath,
-        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
-        Schema *parentSchema = NULL,
-        const std::string *ownName = NULL)
+    std::string sanitiseDocumentUri(const boost::optional<std::string> input)
     {
-        // Returns a document URI if the reference points somewhere
-        // other than the current document
-        const boost::optional<std::string> documentUri =
-                internal::json_reference::getJsonReferenceUri(jsonRef);
+        if (input) {
+            // Trim trailing slash(es)
+            std::string sanitised = *input;
+            sanitised.erase(sanitised.find_last_not_of("#/") + 1,
+                    std::string::npos);
 
-        // Extract JSON Pointer from JSON Reference
-        const std::string actualJsonPointer = sanitiseJsonPointer(
-                internal::json_reference::getJsonReferencePointer(jsonRef));
-
-        // Determine the actual document URI based on the resolution scope
-        const boost::optional<std::string> actualDocumentUri =
-                findAbsoluteDocumentUri(currentScope, documentUri);
-
-        if (actualDocumentUri) {
-            // Resolve reference against remote document
-            if (!fetchDoc) {
-                throw std::runtime_error(
-                        "Fetching of remote JSON References not enabled.");
-            }
-
-            // Returns a pointer to the remote document that was retrieved, or
-            // null if retrieval failed. This class will take ownership of the
-            // pointer, and call freeDoc when it is no longer needed.
-            // TODO: need to track this pointer
-            const AdapterType *newRootNode = fetchDoc(*actualDocumentUri);
-
-            // Can't proceed without the remote document
-            if (!newRootNode) {
-                throw std::runtime_error(
-                        "Failed to fetch referenced schema document: " +
-                        *actualDocumentUri);
-            }
-
-            const AdapterType &referencedAdapter =
-                    internal::json_pointer::resolveJsonPointer(
-                            *newRootNode, actualJsonPointer);
-
-            // Resolve reference against retrieved document
-            populateSchema<AdapterType>(*newRootNode, referencedAdapter, schema,
-                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
-                    ownName);
-
-        } else {
-            // Resolve JSON Reference local to the current document
-            const AdapterType &referencedAdapter =
-                    internal::json_pointer::resolveJsonPointer(
-                            rootNode, actualJsonPointer);
-
-            // Parser schema found a resolved location. This schema will
-            // continue to parsed in the context of the current document and
-            // resolution scope
-            populateSchema<AdapterType>(rootNode, referencedAdapter, schema,
-                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
-                    ownName);
+            return sanitised;
         }
+
+        // If the JSON Pointer is not set, assume that the URI points to
+        // the root of the document
+        return "";
     }
 
     /**
