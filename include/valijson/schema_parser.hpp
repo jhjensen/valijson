@@ -1377,9 +1377,8 @@ private:
             } else if (additionalProperties->isObject()) {
                 // If additionalProperties is an object, it should be used as
                 // a child schema.
-                additionalPropertiesSchema.reset(new Schema());
-                populateSchema<AdapterType>(rootNode, *additionalProperties,
-                        *additionalPropertiesSchema, currentScope,
+                additionalPropertiesSchema = makeOrReuseSchema<AdapterType>(
+                        rootNode, *additionalProperties, currentScope,
                         additionalPropertiesPath, fetchDoc);
             } else {
                 // All other types are invalid
