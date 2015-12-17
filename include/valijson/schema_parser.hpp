@@ -145,7 +145,88 @@ private:
     }
 
     /**
-     * @brief  Return a potentially cached schema, parsed from the given node
+     * @brief  Extract a JSON Reference string from a node
+     *
+     * @param  node    node to extract the JSON Reference from
+     * @param  result  reference to string to set with the result
+     *
+     * @throws std::invalid_argument if node is an object containing a `$ref`
+     *         property but with a value that cannot be interpreted as a string
+     *
+     * @return \c true if a JSON Reference was extracted; \c false otherwise
+     */
+    template<typename AdapterType>
+    bool extractJsonReference(const AdapterType &node, std::string &result)
+    {
+        if (!node.isObject()) {
+            return false;
+        }
+
+        const typename AdapterType::Object o = node.getObject();
+        const typename AdapterType::Object::const_iterator itr = o.find("$ref");
+        if (itr == o.end()) {
+            return false;
+        } else if (!itr->second.asString(result)) {
+            throw std::invalid_argument(
+                    "$ref property expected to contain string value.");
+        }
+
+        return true;
+    }
+
+    /**
+     * @brief  Search the schema cache for a schema matching a given key
+     *
+     * If the key is not present in the query cache, a NULL pointer will be
+     * returned, and the contents of the cache will remain unchanged. This is
+     * in contrast to the behaviour of the std::map [] operator, which would
+     * add the NULL pointer to the cache.
+     *
+     * @param  queryKey  key to search for
+     *
+     * @return shared pointer to Schema if found, NULL pointer otherwise
+     */
+    boost::shared_ptr<Schema> querySchemaCache(const std::string &queryKey)
+    {
+        const SchemaCache::iterator itr = schemaCache.find(queryKey);
+        if (itr == schemaCache.end()) {
+            return boost::shared_ptr<Schema>();
+        }
+
+        return itr->second;
+    }
+
+    /**
+     * @brief  Add entries to the schema cache for a given list of keys
+
+     * @param  keysToCreate  list of keys to create entries for
+     * @param  schema        shared pointer to schema that keys will map to
+     *
+     * @throws std::logic_error if any of the keys are already present in the
+     * schema cache. This behaviour is intended to help detect incorrect usage
+     * of the schema cache during development, and is not expected to occur
+     * otherwise, even for malformed schemas.
+     */
+    void updateSchemaCache(const std::vector<std::string> &keysToCreate,
+            boost::shared_ptr<Schema> schema)
+    {
+        BOOST_FOREACH( const std::string &keyToCreate, keysToCreate ) {
+            const SchemaCache::value_type value(keyToCreate, schema);
+            if (!schemaCache.insert(value).second) {
+                throw std::logic_error(
+                        "Key '" + keyToCreate + "' already in schema cache.");
+            }
+        }
+    }
+
+    /**
+     * @brief  Recursive helper function for retrieving or creating schemas
+     *
+     * This function is applied recursively until a concrete node is found -
+     * that is, one that contains actual schema constraints rather than a JSON
+     * Reference. This termination condition may be trigged by visiting the
+     * concrete node at the end of a series of $ref nodes, or by finding a
+     * schema for one of those $ref nodes in the schema cache.
      *
      * @param  rootNode      Reference to the node from which JSON References
      *                       will be resolved when they refer to the current
@@ -155,9 +236,163 @@ private:
      * @param  nodePath      JSON Pointer representing path to current node
      * @param  fetchDoc      Function to fetch remote JSON documents (optional)
      * @param  parentSchema  Optional pointer to the parent schema, used to
-     *                       support required keyword in Draft 3.
+     *                       support required keyword in Draft 3
      * @param  ownName       Optional pointer to a node name, used to support
-     *                       the 'required' keyword in Draft 3.
+     *                       the 'required' keyword in Draft 3
+     * @param  newCacheKeys  A list of keys that should be added to the cache
+     *                       when recursion terminates
+     */
+    template<typename AdapterType>
+    boost::shared_ptr<Schema> makeOrReuseSchema(
+        const AdapterType &rootNode,
+        const AdapterType &node,
+        boost::optional<std::string> currentScope,
+        const std::string &nodePath,
+        typename FunctionPtrs<AdapterType>::FetchDoc fetchDoc,
+        Schema *parentSchema,
+        const std::string *ownName,
+        std::vector<std::string> &newCacheKeys)
+    {
+        std::string jsonRef;
+
+        // Check for the first termination condition (found a non-$ref node)
+        if (!extractJsonReference(node, jsonRef)) {
+
+            // Construct a key that we can use to search the schema cache for
+            // a schema corresponding to the current node
+            const std::string schemaCacheKey =
+                    currentScope ? (*currentScope + nodePath) : nodePath;
+
+            // Retrieve an existing schema from the cache if possible
+            const boost::shared_ptr<Schema> cachedPtr =
+                    querySchemaCache(schemaCacheKey);
+
+            // Create a new schema otherwise
+            const boost::shared_ptr<Schema> schema = cachedPtr ?
+                    cachedPtr : boost::make_shared<Schema>();
+
+            // Add cache entries for keys belonging to any $ref nodes that were
+            // visited before arriving at the current node
+            updateSchemaCache(newCacheKeys, schema);
+
+            // Schema cache did not contain a pre-existing schema corresponding
+            // to the current node, so the schema that was returned will need
+            // to be populated
+            if (!cachedPtr) {
+                populateSchema(rootNode, node, *schema, currentScope, nodePath,
+                        fetchDoc, parentSchema, ownName);
+            }
+
+            return schema;
+        }
+
+        // Returns a document URI if the reference points somewhere
+        // other than the current document
+        const boost::optional<std::string> documentUri =
+                internal::json_reference::getJsonReferenceUri(jsonRef);
+
+        // Extract JSON Pointer from JSON Reference, with any trailing
+        // slashes removed so that keys in the schema cache end
+        // consistently
+        const std::string actualJsonPointer = sanitiseJsonPointer(
+                internal::json_reference::getJsonReferencePointer(jsonRef));
+
+        // Determine the actual document URI based on the resolution
+        // scope. An absolute document URI will take precedence when
+        // present, otherwise we need to resolve the URI relative to
+        // the current resolution scope
+        const boost::optional<std::string> actualDocumentUri =
+                findAbsoluteDocumentUri(currentScope, documentUri);
+
+        // Construct a key to search the schema cache for an existing schema
+        const std::string queryKey = actualDocumentUri ?
+                (*actualDocumentUri + actualJsonPointer) : actualJsonPointer;
+
+        // Check for the second termination condition (found a $ref node that
+        // already has an entry in the schema cache)
+        const boost::shared_ptr<Schema> cachedPtr = querySchemaCache(queryKey);
+        if (cachedPtr) {
+            updateSchemaCache(newCacheKeys, cachedPtr);
+            return cachedPtr;
+        }
+
+        // Not in schema cache; need to make sure we use the correct root node,
+        // so that JSON References in nested schemas are parsed correctly
+        const AdapterType *newRootNode;
+
+        if (actualDocumentUri) {
+            // Have we seen this document before?
+            DocumentCache::iterator docCacheItr =
+                    documentCache.find(*actualDocumentUri);
+            if (docCacheItr == documentCache.end()) {
+                // Resolve reference against remote document
+                if (!fetchDoc) {
+                    throw std::runtime_error(
+                            "Fetching of remote JSON References not enabled.");
+                }
+
+                // Returns a pointer to the remote document that was
+                // retrieved, or null if retrieval failed. This class
+                // will take ownership of the pointer, and call freeDoc
+                // when it is no longer needed.
+                //
+                // TODO: need to track this pointer
+                //
+                newRootNode = fetchDoc(*actualDocumentUri);
+
+                // Can't proceed without the remote document
+                if (!newRootNode) {
+                    throw std::runtime_error(
+                            "Failed to fetch referenced schema "
+                            "document: " + *actualDocumentUri);
+                }
+
+            } else {
+                newRootNode = (AdapterType*)docCacheItr->second;
+            }
+
+        } else {
+            // JSON References in nested schema will be resolved
+            // relative to current document
+            newRootNode = &rootNode;
+        }
+
+        // Find where we need to be in the document
+        const AdapterType &referencedAdapter =
+                internal::json_pointer::resolveJsonPointer(
+                        *newRootNode, actualJsonPointer);
+
+        newCacheKeys.push_back(queryKey);
+
+        // Populate the schema, starting from the referenced node, with nested
+        // JSON References resolved relative to the new root node
+        return makeOrReuseSchema(*newRootNode, referencedAdapter,
+                currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                ownName, newCacheKeys);
+    }
+
+    /**
+     * @brief  Return shared pointer of a schema corresponding to a given node
+     *
+     * This function makes use of a schema cache, so that if a node refers to
+     * a schema has that already been returned by a call to this function, the
+     * existing Schema instance will be returned.
+     *
+     * Should a series of $ref, or reference, nodes be resolved before reaching
+     * a concrete node, an entry will be added to the schema cache for each of
+     * the nodes in that path.
+     *
+     * @param  rootNode      Reference to the node from which JSON References
+     *                       will be resolved when they refer to the current
+     *                       document
+     * @param  node          Reference to the node to parse
+     * @param  currentScope  URI for current resolution scope
+     * @param  nodePath      JSON Pointer representing path to current node
+     * @param  fetchDoc      Function to fetch remote JSON documents (optional)
+     * @param  parentSchema  Optional pointer to the parent schema, used to
+     *                       support required keyword in Draft 3
+     * @param  ownName       Optional pointer to a node name, used to support
+     *                       the 'required' keyword in Draft 3
      */
     template<typename AdapterType>
     boost::shared_ptr<Schema> makeOrReuseSchema(
@@ -169,133 +404,10 @@ private:
         Schema *parentSchema = NULL,
         const std::string *ownName = NULL)
     {
-        // Check for JSON References and process them accordingly
-        if (node.isObject()) {
-            typename AdapterType::Object object = node.getObject();
-            const typename AdapterType::Object::const_iterator itr =
-                    object.find("$ref");
-            if (itr != object.end()) {
-                if (!itr->second.maybeString()) {
-                    throw std::runtime_error(
-                            "$ref property expected to contain string value.");
-                }
+        std::vector<std::string> schemaCacheKeysToCreate;
 
-                // Found a JSON Reference
-                const std::string &jsonRef = itr->second.asString();
-
-                // Returns a document URI if the reference points somewhere
-                // other than the current document
-                const boost::optional<std::string> documentUri =
-                        internal::json_reference::getJsonReferenceUri(jsonRef);
-
-                // Extract JSON Pointer from JSON Reference, with any trailing
-                // slashes removed so that keys in the schema cache end
-                // consistently
-                const std::string actualJsonPointer = sanitiseJsonPointer(
-                        internal::json_reference::getJsonReferencePointer(
-                                jsonRef));
-
-                // Determine the actual document URI based on the resolution
-                // scope. An absolute document URI will take precedence when
-                // present, otherwise we need to resolve the URI relative to
-                // the current resolution scope
-                const boost::optional<std::string> actualDocumentUri =
-                        findAbsoluteDocumentUri(currentScope, documentUri);
-
-                // Construct a key to search the schema cache for an existing
-                // schema parsed from this node
-                const std::string schemaCacheKey = actualDocumentUri ?
-                        (*actualDocumentUri + actualJsonPointer) :
-                        actualJsonPointer;
-
-                // Check schema cache
-                SchemaCache::iterator schemaCacheItr = schemaCache.find(
-                        schemaCacheKey);
-                if (schemaCacheItr != schemaCache.end()) {
-                    return schemaCacheItr->second;
-                }
-
-                // Not in schema cache; need to make sure we use the correct
-                // root node, so that JSON References in nested schemas are
-                // parsed correctly
-                const AdapterType *newRootNode;
-
-                if (actualDocumentUri) {
-                    // Have we seen this document before?
-                    DocumentCache::iterator docCacheItr =
-                            documentCache.find(*actualDocumentUri);
-                    if (docCacheItr == documentCache.end()) {
-                        // Resolve reference against remote document
-                        if (!fetchDoc) {
-                            throw std::runtime_error(
-                                    "Fetching of remote JSON References not "
-                                    "enabled.");
-                        }
-
-                        // Returns a pointer to the remote document that was
-                        // retrieved, or null if retrieval failed. This class
-                        // will take ownership of the pointer, and call freeDoc
-                        // when it is no longer needed.
-                        //
-                        // TODO: need to track this pointer
-                        //
-                        newRootNode = fetchDoc(*actualDocumentUri);
-
-                        // Can't proceed without the remote document
-                        if (!newRootNode) {
-                            throw std::runtime_error(
-                                    "Failed to fetch referenced schema "
-                                    "document: " + *actualDocumentUri);
-                        }
-
-                    } else {
-                        newRootNode = (AdapterType*)docCacheItr->second;
-                    }
-
-                } else {
-                    // JSON References in nested schema will be resolved
-                    // relative to current document
-                    newRootNode = &rootNode;
-                }
-
-                // Find where we need to be in the document
-                const AdapterType &referencedAdapter =
-                        internal::json_pointer::resolveJsonPointer(
-                                *newRootNode, actualJsonPointer);
-
-                // Add an entry to the schema cache. Although we have not
-                // finished parsing this schema, this ensures that nested
-                // references to it will receive a shared_ptr to the same
-                // schema instance
-                boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
-                schemaCache.insert(
-                        SchemaCache::value_type(schemaCacheKey, schema));
-
-                // Populate the schema relative to the new root node
-                populateSchema(*newRootNode, referencedAdapter, *schema,
-                        currentScope, actualJsonPointer, fetchDoc, parentSchema,
-                        ownName);
-
-                return schema;
-            }
-        }
-
-        // Node does not contain a JSON Reference, so we'll check whether it
-        // is already in the cache
-        const std::string schemaCacheKey = currentScope ?
-                (*currentScope + nodePath) : nodePath;
-        SchemaCache::iterator schemaCacheItr = schemaCache.find(schemaCacheKey);
-        if (schemaCacheItr != schemaCache.end()) {
-            return schemaCacheItr->second;
-        }
-
-        // Parse new schema
-        boost::shared_ptr<Schema> schema = boost::make_shared<Schema>();
-        schemaCache.insert(SchemaCache::value_type(schemaCacheKey, schema));
-        populateSchema(rootNode, node, *schema, currentScope, nodePath,
-                fetchDoc, parentSchema, ownName);
-
-        return schema;
+        return makeOrReuseSchema(rootNode, node, currentScope, nodePath,
+                fetchDoc, parentSchema, ownName, schemaCacheKeysToCreate);
     }
 
     /**
@@ -393,8 +505,6 @@ private:
                 return;
             }
         }
-
-
 
         if ((itr = object.find("id")) != object.end()) {
             if (itr->second.maybeString()) {
