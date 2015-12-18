@@ -252,6 +252,11 @@ TEST_F(TestValidator, Draft3_Properties)
     processDraft3TestFile(TEST_SUITE_DIR "draft3/properties.json");
 }
 
+TEST_F(TestValidator, Draft3_Ref)
+{
+    processDraft3TestFile(TEST_SUITE_DIR "draft3/ref.json");
+}
+
 TEST_F(TestValidator, Draft3_RefRemote)
 {
     processDraft3TestFile(TEST_SUITE_DIR "draft3/refRemote.json");
@@ -375,6 +380,11 @@ TEST_F(TestValidator, Draft4_PatternProperties)
 TEST_F(TestValidator, Draft4_Properties)
 {
     processDraft4TestFile(TEST_SUITE_DIR "draft4/properties.json");
+}
+
+TEST_F(TestValidator, Draft4_Ref)
+{
+    processDraft4TestFile(TEST_SUITE_DIR "draft4/ref.json");
 }
 
 TEST_F(TestValidator, Draft4_RefRemote)
