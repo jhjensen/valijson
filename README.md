@@ -1,4 +1,4 @@
-# Valijson [![Build Status](https://travis-ci.org/tristanpenman/valijson.svg?branch=master)](https://travis-ci.org/tristanpenman/valijson) #
+# Valijson [![Build Status](https://travis-ci.org/tristanpenman/valijson.svg?branch=schema-parser-ref-support)](https://travis-ci.org/tristanpenman/valijson) #
 
 ## Overview ##
 
@@ -9,12 +9,6 @@ Valijson provides a simple validation API that allows you load JSON Schemas, and
 ## Project Goals ##
 
 The goal of this project is to support validation of all constraints available in JSON Schema v4, while being competitive with the performance of hand-written JSON validators.
-
-### JSON References ###
-
-The library is intended to include support for both local and remote JSON References. This feature is currently a work in progress and is subject to change. The current implementation attempts to resolve JSON References while parsing a JSON Schema, but this has proven ineffective for several use cases and loses some of the flexibility intended by the JSON Reference and JSON Schema specifications.
-
-There is a branch of the project that is intended to fix these issues by implementing a two phase schema parser. This parser would first build a graph from a JSON document by resolving any references, then load a JSON Schema model by traversing that graph. This will hopefully be complete in the near future.
 
 ## Usage ##
 
@@ -61,6 +55,10 @@ Validate a document:
 
 Note that Valijson's `SchemaParser` and `Validator` classes expect you to pass in a `RapidJsonAdapter` rather than a `rapidjson::Document`. This is due to the fact that `SchemaParser` and `Validator` are template classes that can be used with any of the JSON parsers supported by Valijson.
 
+### JSON References ###
+
+The library is intended to include support for both local and remote JSON References. When parsing a schema, a custom `fetchDoc` function can be provided. This function should return an Adapter that corresponds to the resource that is being fetched. The SchemaParser class takes ownership of fetched Adapters, so a `freeDoc` function should also be provided to ensure that memory used by fetched documents can be freed once parsing is complete.
+
 ## Test Suite ##
 
 Valijson's' test suite currently contains several hand-crafted tests and uses the standard [JSON Schema Test Suite](https://github.com/json-schema/JSON-Schema-Test-Suite) to test support for parts of the JSON Schema feature set that have been implemented.
@@ -100,15 +98,10 @@ The exceptions for Draft 3 are:
  - extends
  - format (optional)
  - readonly
- - ref
- - refRemote
 
 The exceptions for Draft 4 are:
 
- - definitions
  - format (optional)
- - ref
- - refRemote
 
 Support for JSON References is in development.
 
