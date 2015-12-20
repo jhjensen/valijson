@@ -55,11 +55,14 @@ public:
     template<typename AdapterType>
     struct FunctionPtrs
     {
+        typedef typename adapters::AdapterTraits<AdapterType>::DocumentType
+                DocumentType;
+
         /// Templated function pointer type for fetching remote documents
-        typedef const AdapterType * (*FetchDoc)(const std::string &uri);
+        typedef const DocumentType * (*FetchDoc)(const std::string &uri);
 
         /// Templated function pointer type for freeing fetched documents
-        typedef void (*FreeDoc)(const AdapterType *);
+        typedef void (*FreeDoc)(const DocumentType *);
     };
 
     /**
@@ -101,7 +104,10 @@ private:
     template<typename AdapterType>
     struct DocumentCache
     {
-        typedef std::map<std::string, AdapterType*> Type;
+        typedef typename adapters::AdapterTraits<AdapterType>::DocumentType
+                DocumentType;
+
+        typedef std::map<std::string, const DocumentType*> Type;
     };
 
     typedef std::map<std::string, boost::shared_ptr<Schema> > SchemaCache;
@@ -122,11 +128,7 @@ private:
         typedef typename DocumentCache<AdapterType>::Type DocCacheType;
 
         BOOST_FOREACH( const typename DocCacheType::value_type &v, docCache ) {
-            if (freeDoc) {
-                freeDoc(v.second);
-            } else {
-                delete v.second;
-            }
+            freeDoc(v.second);
         }
     }
 
@@ -358,11 +360,10 @@ private:
             return cachedPtr;
         }
 
-        // Not in schema cache; need to make sure we use the correct root node,
-        // so that JSON References in nested schemas are parsed correctly
-        const AdapterType *newRootNode;
-
         if (actualDocumentUri) {
+
+            const typename FunctionPtrs<AdapterType>::DocumentType *newDoc;
+
             // Have we seen this document before?
             typename DocumentCache<AdapterType>::Type::iterator docCacheItr =
                     docCache.find(*actualDocumentUri);
@@ -377,40 +378,55 @@ private:
                 // retrieved, or null if retrieval failed. This class
                 // will take ownership of the pointer, and call freeDoc
                 // when it is no longer needed.
-                //
-                // TODO: need to track this pointer
-                //
-                newRootNode = fetchDoc(*actualDocumentUri);
+                newDoc = fetchDoc(*actualDocumentUri);
 
                 // Can't proceed without the remote document
-                if (!newRootNode) {
+                if (!newDoc) {
                     throw std::runtime_error(
-                            "Failed to fetch referenced schema "
-                            "document: " + *actualDocumentUri);
+                            "Failed to fetch referenced schema document: " +
+                            *actualDocumentUri);
                 }
 
+                typedef typename DocumentCache<AdapterType>::Type::value_type
+                        DocCacheValueType;
+
+                docCache.insert(DocCacheValueType(*actualDocumentUri, newDoc));
+
             } else {
-                newRootNode = (AdapterType*)docCacheItr->second;
+                newDoc = docCacheItr->second;
             }
 
+            const AdapterType newRootNode(*newDoc);
+
+            // Find where we need to be in the document
+            const AdapterType &referencedAdapter =
+                    internal::json_pointer::resolveJsonPointer(
+                            newRootNode, actualJsonPointer);
+
+            newCacheKeys.push_back(queryKey);
+
+            // Populate the schema, starting from the referenced node, with
+            // nested JSON References resolved relative to the new root node
+            return makeOrReuseSchema(newRootNode, referencedAdapter,
+                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName, docCache, schemaCache, newCacheKeys);
+
         } else {
+
             // JSON References in nested schema will be resolved
             // relative to current document
-            newRootNode = &rootNode;
+            const AdapterType &referencedAdapter =
+                    internal::json_pointer::resolveJsonPointer(
+                            rootNode, actualJsonPointer);
+
+            newCacheKeys.push_back(queryKey);
+
+            // Populate the schema, starting from the referenced node, with
+            // nested JSON References resolved relative to the new root node
+            return makeOrReuseSchema(rootNode, referencedAdapter,
+                    currentScope, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName, docCache, schemaCache, newCacheKeys);
         }
-
-        // Find where we need to be in the document
-        const AdapterType &referencedAdapter =
-                internal::json_pointer::resolveJsonPointer(
-                        *newRootNode, actualJsonPointer);
-
-        newCacheKeys.push_back(queryKey);
-
-        // Populate the schema, starting from the referenced node, with nested
-        // JSON References resolved relative to the new root node
-        return makeOrReuseSchema(*newRootNode, referencedAdapter,
-                currentScope, actualJsonPointer, fetchDoc, parentSchema,
-                ownName, docCache, schemaCache, newCacheKeys);
     }
 
     /**
@@ -755,8 +771,6 @@ private:
         const std::string actualJsonPointer = sanitiseJsonPointer(
                 internal::json_reference::getJsonReferencePointer(jsonRef));
 
-        const AdapterType *newRootNode;
-
         if (documentUri && internal::uri::isUriAbsolute(*documentUri)) {
             // Resolve reference against remote document
             if (!fetchDoc) {
@@ -764,27 +778,43 @@ private:
                         "Fetching of remote JSON References not enabled.");
             }
 
-            newRootNode = fetchDoc(*documentUri);
+            const typename DocumentCache<AdapterType>::DocumentType *newDoc =
+                    fetchDoc(*documentUri);
 
             // Can't proceed without the remote document
-            if (!newRootNode) {
+            if (!newDoc) {
                 throw std::runtime_error(
                         "Failed to fetch referenced schema document: " +
                         *documentUri);
             }
 
+            // Add to document cache
+            typedef typename DocumentCache<AdapterType>::Type::value_type
+                    DocCacheValueType;
+
+            docCache.insert(DocCacheValueType(*documentUri, newDoc));
+
+            const AdapterType newRootNode(*newDoc);
+
+            const AdapterType &referencedAdapter =
+                internal::json_pointer::resolveJsonPointer(
+                        newRootNode, actualJsonPointer);
+
+            // TODO: Need to detect degenerate circular references
+            resolveThenPopulateSchema(newRootNode, referencedAdapter, schema,
+                    boost::none, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName, docCache, schemaCache);
+
         } else {
-            newRootNode = &rootNode;
+            const AdapterType &referencedAdapter =
+                internal::json_pointer::resolveJsonPointer(
+                        rootNode, actualJsonPointer);
+
+            // TODO: Need to detect degenerate circular references
+            resolveThenPopulateSchema(rootNode, referencedAdapter, schema,
+                    boost::none, actualJsonPointer, fetchDoc, parentSchema,
+                    ownName, docCache, schemaCache);
         }
-
-        const AdapterType &referencedAdapter =
-            internal::json_pointer::resolveJsonPointer(
-                    *newRootNode, actualJsonPointer);
-
-        // TODO: Need to detect degenerate circular references
-        resolveThenPopulateSchema(*newRootNode, referencedAdapter, schema,
-                boost::none, actualJsonPointer, fetchDoc, parentSchema,
-                ownName, docCache, schemaCache);
     }
 
     /**

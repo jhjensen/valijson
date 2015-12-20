@@ -52,25 +52,26 @@ std::string getRelativePath(const std::string &uri)
 }
 
 template<typename AdapterType>
-const AdapterType * fetchDocument(const std::string &uri)
+const typename AdapterTraits<AdapterType>::DocumentType * fetchDocument(
+        const std::string &uri)
 {
-    // TODO: Memory leak
-    typename AdapterTraits<AdapterType>::DocumentType *document =
-        new typename AdapterTraits<AdapterType>::DocumentType();
-
     const std::string relativePath = getRelativePath(uri);
 
-    if (valijson::utils::loadDocument(relativePath, *document)) {
-        return new AdapterType(*document);
-    } else {
+    typename AdapterTraits<AdapterType>::DocumentType *document =
+            new typename AdapterTraits<AdapterType>::DocumentType();
+
+    if (!valijson::utils::loadDocument(relativePath, *document)) {
+        delete document;
         throw std::runtime_error("Failed fetchDoc of " + uri);
     }
+
+    return document;
 }
 
 template<typename AdapterType>
-void freeDocument(const AdapterType *adapter)
+void freeDocument(const typename AdapterTraits<AdapterType>::DocumentType *ptr)
 {
-    delete adapter;
+    delete ptr;
 }
 
 class TestValidator : public ::testing::TestWithParam<const char *>
