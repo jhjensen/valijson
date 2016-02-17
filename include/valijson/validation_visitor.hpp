@@ -853,7 +853,17 @@ public:
         const Subschema *additionalPropertiesSubschema =
                 constraint.getAdditionalPropertiesSubschema();
         if (!additionalPropertiesSubschema) {
-            return propertiesMatched.size() == target.getObjectSize();
+            if (propertiesMatched.size() != target.getObjectSize()) {
+                if (results) {
+                    results->pushError(context, "Object contains properties "
+                            "that could not be validated using 'properties' "
+                            "or 'additionalProperties' constraints");
+                }
+
+                return false;
+            }
+
+            return validated;
         }
 
         BOOST_FOREACH( const typename AdapterType::ObjectMember m, object ) {
@@ -1022,14 +1032,19 @@ public:
             return true;
         }
 
-        bool validated = true;
+        // Empty arrays are always valid
+        if (target.getArraySize() == 0) {
+            return true;
+        }
 
         const typename AdapterType::Array targetArray = target.asArray();
         const typename AdapterType::Array::const_iterator end = targetArray.end();
+
+        bool validated = true;
         const typename AdapterType::Array::const_iterator secondLast = --targetArray.end();
         unsigned int outerIndex = 0;
         for (typename AdapterType::Array::const_iterator outerItr = targetArray.begin(); outerItr != secondLast; ++outerItr) {
-            unsigned int innerIndex = 0;
+            unsigned int innerIndex = 1;
             typename AdapterType::Array::const_iterator innerItr(outerItr);
             for (++innerItr; innerItr != end; ++innerItr) {
                 if (outerItr->equalTo(*innerItr, true)) {
